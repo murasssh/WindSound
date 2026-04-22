@@ -71,6 +71,6 @@ Distribuído sob a licença GLPv3. Veja [`LICENSE`](LICENSE) para mais informaç
 
 Feito com 🎧 por **Murillo Bernado**
 
-*Windsound — Musícas que voam ao vento.*
+*Windsound — Ao Som Do Vento.*
 
 </div>
