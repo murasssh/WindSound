@@ -16,7 +16,7 @@
 [![Status](https://img.shields.io/badge/status-beta-orange?style=flat-square)](https://github.com)
 [![Versão](https://img.shields.io/badge/versão-0.1.0--beta-blue?style=flat-square)](https://github.com)
 [![API](https://img.shields.io/badge/API-Innertube-red?style=flat-square)](https://github.com)
-[![Licença](https://fsfe.org/graphics/gplv3-logo-red.png)](LICENSE)
+[![Licença]([https://fsfe.org/graphics/gplv3-logo-red.png](https://img.shields.io/badge/licença-GPLv3-green?style=flat-square)](LICENSE)
 
 </div>
 
