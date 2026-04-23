@@ -1,18 +1,215 @@
-<!doctype html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="WindSound: player de musica moderno com YouTube, fila drag-and-drop e temas personalizaveis."
-    />
-    <link rel="icon" type="image/png" href="/branding/windsound-icon.png" />
-    <title>WindSound</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script src="https://www.youtube.com/iframe_api"></script>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindSound — Streaming de YouTube</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">
+    <img src="Your paragraph text.svg" alt="WindSound Logo" class="nav-logo">
+    <span class="nav-title">WindSound</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#features">Recursos</a></li>
+    <li><a href="#install">Instalação</a></li>
+    <li><a href="https://github.com/murasssh/WindSound" target="_blank">GitHub</a></li>
+    <li><a href="https://github.com/murasssh/WindSound/releases" target="_blank" class="nav-cta">Download</a></li>
+  </ul>
+</nav>
+
+<div class="hero">
+  <div class="wind-bg" id="windBg"></div>
+  <div class="hero-glow"></div>
+
+  <div class="hero-content">
+    <img src="Your paragraph text.svg" alt="WindSound Logo" class="hero-logo">
+
+    <p class="hero-eyebrow">App de Streaming para YouTube</p>
+    <h1 class="hero-title">A música flui como o <span>vento</span></h1>
+    <p class="hero-sub">O WindSound permite transmitir qualquer áudio do YouTube diretamente para sua área de trabalho — interface limpa, zero distrações, apenas o som.</p>
+
+    <div class="hero-buttons">
+      <a href="https://github.com/murasssh/WindSound/releases" target="_blank" class="btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm-1 14.59L6.41 12 7.83 10.58 11 13.75V7h2v6.75l3.17-3.17 1.42 1.42L12 16.59z"/></svg>
+        Baixar para Windows
+      </a>
+      <a href="https://github.com/murasssh/WindSound" target="_blank" class="btn-ghost">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        Ver no GitHub
+      </a>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num">API YT</div>
+      <div class="stat-label">Tecnologia</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">Grátis</div>
+      <div class="stat-label">Código Aberto</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">Windows</div>
+      <div class="stat-label">Plataforma</div>
+    </div>
+  </div>
+</div>
+
+<section id="features">
+  <p class="section-label reveal">O que ele faz</p>
+  <h2 class="section-title reveal reveal-delay-1">Tudo o que você precisa,<br>nada em excesso.</h2>
+  <p class="section-sub reveal reveal-delay-2">Feito para ser rápido, leve e focado. Transmita áudio do YouTube sem precisar abrir um navegador.</p>
+
+  <div class="features-grid">
+    <div class="feat-card reveal reveal-delay-1">
+      <div class="feat-icon">🎵</div>
+      <div class="feat-title">Streaming do YouTube</div>
+      <div class="feat-desc">Pesquise e transmita qualquer áudio do YouTube usando a API oficial.</div>
+    </div>
+    <div class="feat-card reveal reveal-delay-2">
+      <div class="feat-icon">🖥️</div>
+      <div class="feat-title">Nativo para Desktop</div>
+      <div class="feat-desc">Uma experiência focada. Sem abas de navegador, sem anúncios atrapalhando sua música.</div>
+    </div>
+    <div class="feat-card reveal reveal-delay-3">
+      <div class="feat-icon">🔍</div>
+      <div class="feat-title">Busca & Descoberta</div>
+      <div class="feat-desc">Encontre faixas, playlists e canais instantaneamente com o motor de busca integrado.</div>
+    </div>
+    <div class="feat-card reveal reveal-delay-4">
+      <div class="feat-icon">⚡</div>
+      <div class="feat-title">Ultra Leve</div>
+      <div class="feat-desc">Baixo consumo de recursos. O WindSound não pesa enquanto sua música toca em segundo plano.</div>
+    </div>
+    <div class="feat-card reveal reveal-delay-1">
+      <div class="feat-icon">🔓</div>
+      <div class="feat-title">Código Aberto</div>
+      <div class="feat-desc">Totalmente open source no GitHub. Inspecione o código, contribua ou faça um fork.</div>
+    </div>
+    <div class="feat-card reveal reveal-delay-2">
+      <div class="feat-icon">🎛️</div>
+      <div class="feat-title">Controles de Reprodução</div>
+      <div class="feat-desc">Controle total — reproduzir, pausar, pular e gerenciar sua fila com facilidade.</div>
+    </div>
+  </div>
+</section>
+
+<div class="mockup-section">
+  <p class="section-label reveal">Interface</p>
+  <h2 class="section-title reveal reveal-delay-1">Limpa. Simples. Sua.</h2>
+  <div class="mockup-window reveal reveal-delay-2">
+    <div class="mockup-bar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+    </div>
+    <div class="mockup-body">
+      <div class="mock-sidebar">
+        <div class="mock-item active"></div>
+        <div class="mock-item sm"></div>
+        <div class="mock-item xs"></div>
+        <div style="height:1px;background:var(--border);margin:.4rem 0;"></div>
+        <div class="mock-item sm"></div>
+        <div class="mock-item xs"></div>
+        <div class="mock-item"></div>
+      </div>
+      <div class="mock-main">
+        <div class="mock-player">
+          <div class="mock-thumb">▶</div>
+          <div class="mock-info">
+            <div class="mock-track"><div class="mock-track-fill"></div></div>
+            <div class="mock-meta"></div>
+          </div>
+        </div>
+        <div class="mock-controls">
+          <div class="mock-btn">⏮</div>
+          <div class="mock-btn play">▶</div>
+          <div class="mock-btn">⏭</div>
+        </div>
+        <div class="mock-list">
+          <div class="mock-row">
+            <div class="mock-row-icon"></div>
+            <div class="mock-row-lines"><div class="mock-row-l1"></div><div class="mock-row-l2"></div></div>
+          </div>
+          <div class="mock-row">
+            <div class="mock-row-icon"></div>
+            <div class="mock-row-lines"><div class="mock-row-l1"></div><div class="mock-row-l2"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="install-section" id="install">
+  <p class="section-label reveal">Comece agora</p>
+  <h2 class="section-title reveal reveal-delay-1">Pronto para usar<br>em minutos.</h2>
+
+  <div class="steps">
+    <div class="step reveal reveal-delay-1">
+      <div class="step-num">1</div>
+      <div class="step-text">
+        <strong>Baixe a versão mais recente</strong>
+        <p>Acesse a página de <a href="https://github.com/murasssh/WindSound/releases" target="_blank" style="color:var(--blue-bright)">Releases no GitHub</a> e baixe o instalador <code>.exe</code>.</p>
+      </div>
+    </div>
+    <div class="step reveal reveal-delay-2">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        <strong>Execute o instalador</strong>
+        <p>Inicie o arquivo baixado e siga os passos. O WindSound estará pronto na sua área de trabalho em segundos.</p>
+      </div>
+    </div>
+    <div class="step reveal reveal-delay-3">
+      <div class="step-num">3</div>
+      <div class="step-text">
+        <strong>Configure sua chave de API do YouTube</strong>
+        <p>O app utiliza a API do YouTube. Obtenha uma chave gratuita no <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue-bright)">Google Cloud Console</a> e cole nas configurações.</p>
+      </div>
+    </div>
+    <div class="step reveal reveal-delay-4">
+      <div class="step-num">4</div>
+      <div class="step-text">
+        <strong>Comece a ouvir 🎵</strong>
+        <p>Busque por qualquer música ou artista — e deixe o vento levar o som.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section style="text-align:center; padding:5rem 2rem;">
+  <div style="background:linear-gradient(135deg, rgba(74,143,226,.12), rgba(74,143,226,.05)); border:1px solid var(--border); border-radius:20px; padding:4rem 2rem; position:relative; overflow:hidden;">
+    <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 0%, rgba(74,143,226,.15), transparent 70%);pointer-events:none;"></div>
+    <img src="Your paragraph text.svg" alt="WindSound Logo" style="width: 80px; margin-bottom: 1.5rem;">
+    <h2 class="section-title" style="max-width:500px;margin:0 auto 1rem;">Pronto para ouvir?</h2>
+    <p style="color:rgba(240,244,255,.5);margin-bottom:2rem;max-width:420px;margin-left:auto;margin-right:auto;">Baixe o WindSound gratuitamente e experimente as músicas do YouTube da forma que devem ser ouvidas.</p>
+    <a href="https://github.com/murasssh/WindSound/releases" target="_blank" class="btn-primary" style="font-size:1.05rem; padding:1rem 2.5rem;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm-1 14.59L6.41 12 7.83 10.58 11 13.75V7h2v6.75l3.17-3.17 1.42 1.42L12 16.59z"/></svg>
+      Baixar WindSound — Grátis
+    </a>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-brand">
+    <img src="Your paragraph text.svg" alt="WindSound Logo" style="width: 30px; margin-right: 10px;">
+    WindSound
+  </div>
+  <ul class="footer-links">
+    <li><a href="https://github.com/murasssh/WindSound" target="_blank">GitHub</a></li>
+    <li><a href="https://github.com/murasssh/WindSound/releases" target="_blank">Versões</a></li>
+    <li><a href="https://github.com/murasssh/WindSound/issues" target="_blank">Problemas</a></li>
+  </ul>
+  <span class="footer-copy">Feito com 💙 por murasssh</span>
+</footer>
+
+<script src="script.js"></script>
+</body>
 </html>
