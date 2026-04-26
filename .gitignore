@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+dist-electron/
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+vite.out.log
+vite.err.log
+electron.out.log
+electron.err.log
+
+# env and secrets
+.env
+.env.local
+.env.*.local
+
+# temp/debug files
+tmp-*.cjs
+tmp-*.js
+tmp-*.ts
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# local runtime data
+coverage/
+*.tsbuildinfo
+session-backups/

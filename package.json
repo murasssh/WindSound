@@ -8,11 +8,14 @@
   "scripts": {
     "dev": "vite",
     "dev:web": "vite --mode web",
-    "build": "tsc -p tsconfig.json && vite build && electron-builder",
+    "icons:win": "node scripts/generate-icons.mjs \"C:\\\\Users\\\\muras\\\\Downloads\\\\Your paragraph text.svg\"",
+    "build": "tsc -p tsconfig.json && vite build",
     "build:web": "tsc -p tsconfig.json && vite build",
     "clean": "node -e \"const fs=require('fs');['dist','dist-electron'].forEach((dir)=>fs.rmSync(dir,{recursive:true,force:true}))\"",
     "preview": "vite preview",
-    "electron:build": "electron-builder"
+    "electron:build": "electron-builder",
+    "dist": "node scripts/dist-win-portable.mjs",
+    "dist:win": "node scripts/dist-win-portable.mjs"
   },
   "keywords": [
     "youtube",
@@ -25,6 +28,7 @@
   "author": "WindSound",
   "license": "MIT",
   "devDependencies": {
+    "@electron/packager": "^20.0.0",
     "@types/node": "^20.11.17",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
@@ -37,17 +41,15 @@
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "png-to-ico": "^3.0.1",
     "postcss": "^8.4.35",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",
     "vite": "^5.1.0",
-    "vite-plugin-electron": "^0.28.0",
-    "vite-plugin-electron-renderer": "^0.14.5"
+    "vite-plugin-electron": "^0.28.0"
   },
   "dependencies": {
-    "@dnd-kit/core": "6.3.1",
-    "@dnd-kit/sortable": "10.0.0",
-    "@dnd-kit/utilities": "3.2.2",
     "lucide-react": "^0.359.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -57,6 +59,8 @@
   "build": {
     "appId": "com.windsound.app",
     "productName": "WindSound",
+    "asar": true,
+    "compression": "maximum",
     "directories": {
       "output": "dist"
     },
@@ -64,21 +68,29 @@
       "dist/**/*",
       "dist-electron/**/*",
       "electron/preload.cjs",
-      "package.json"
+      "package.json",
+      "!dist-electron/**/*.map"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "public/branding/windsound-icon.png",
-      "artifactName": "${productName}_Setup_${version}.${ext}"
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}_Portable_${version}.${ext}"
     },
     "mac": {
       "target": "dmg",
-      "icon": "public/branding/windsound-icon.png",
+      "icon": "build/icon.png",
       "artifactName": "${productName}_${version}.${ext}"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "public/branding/windsound-icon.png",
+      "icon": "build/icon.png",
       "artifactName": "${productName}_${version}.${ext}"
     }
   }
