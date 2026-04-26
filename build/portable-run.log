@@ -1,0 +1,8 @@
+
+[15196:0425/175415.636:ERROR:gpu_process_host.cc(989)] GPU process exited unexpectedly: exit_code=-1073741515
+[15196:0425/175415.694:ERROR:gpu_process_host.cc(989)] GPU process exited unexpectedly: exit_code=-1073741515
+[15196:0425/175415.719:ERROR:gpu_process_host.cc(989)] GPU process exited unexpectedly: exit_code=-1073741515
+[15196:0425/175415.738:ERROR:gpu_process_host.cc(989)] GPU process exited unexpectedly: exit_code=-1073741515
+[15196:0425/175415.763:ERROR:gpu_process_host.cc(989)] GPU process exited unexpectedly: exit_code=-1073741515
+[15196:0425/175415.782:ERROR:gpu_process_host.cc(989)] GPU process exited unexpectedly: exit_code=-1073741515
+[15196:0425/175415.782:FATAL:gpu_data_manager_impl_private.cc(448)] GPU process isn't usable. Goodbye.
