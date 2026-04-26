@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Radio } from 'lucide-react'
-import { getHomeFeed, getPlaylistTracks } from '@/integrations/youtube'
+import { getHomeFeed, getHomeRefreshInterval, getPlaylistTracks } from '@/integrations/youtube'
 import { usePlayerStore } from '@/state/playerStore'
 import type { HomeSection, HomeSectionItem, RecommendationItem } from '@/types'
 
 const HOME_CACHE_KEY = 'windsound-home-cache-v1'
 const HOME_CACHE_TTL_MS = 1000 * 60 * 12
-const INITIAL_RECOMMENDATIONS = 15
-const INITIAL_PLAYLISTS = 30
-const INITIAL_SONGS = 60
-const PLAYLISTS_PER_PAGE = 6
-const SONGS_PER_PAGE = 12
+const INITIAL_RECOMMENDATIONS = 20
+const INITIAL_PLAYLISTS = 18
+const INITIAL_SONGS = 36
+const PLAYLISTS_PER_PAGE = 12
+const SONGS_PER_PAGE = 24
 const PLAYLISTS_PER_SECTION = 6
 
 const PLAYLIST_SECTION_SLOTS = [
@@ -64,6 +64,9 @@ const makeFallbackThumbnail = (label: string) =>
   `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360"><rect width="360" height="360" rx="28" fill="#1b1b1f"/><text x="50%" y="50%" fill="#f4f4f5" font-family="Inter, Arial, sans-serif" font-size="28" letter-spacing="5" text-anchor="middle" dominant-baseline="middle">${label.slice(0, 16).toUpperCase()}</text></svg>`,
   )}`
+
+const createReliableThumbnail = (videoId: string | undefined, label: string) =>
+  videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : makeFallbackThumbnail(label)
 
 const flattenSectionItems = (sections: HomeSection[]) =>
   uniqueBy(
@@ -131,6 +134,8 @@ const Home = () => {
   const [hasMoreContent, setHasMoreContent] = useState(true)
   const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const mountedAccountStateRef = useRef<boolean | null>(null)
+  const lastNetworkRefreshAtRef = useRef(0)
 
   const { playTrack, startPlaylist, accountStatus, setAccountStatus, currentView } = usePlayerStore((state) => ({
     playTrack: state.playTrack,
@@ -192,11 +197,16 @@ const Home = () => {
     [setAccountStatus, writeHomeCache],
   )
 
-  const bootstrapHome = useCallback(async () => {
+  const bootstrapHome = useCallback(async (options?: { forceNetwork?: boolean }) => {
+    const forceNetwork = options?.forceNetwork ?? false
     setIsBootstrapping(true)
 
     const cachedFeed = readHomeCache()
-    const hasFreshCache = cachedFeed ? Date.now() - cachedFeed.savedAt < HOME_CACHE_TTL_MS : false
+    const cacheMatchesSession = cachedFeed
+      ? cachedFeed.data.accountStatus.connected === accountStatus.connected
+      : false
+    const hasFreshCache =
+      !forceNetwork && cachedFeed ? Date.now() - cachedFeed.savedAt < HOME_CACHE_TTL_MS && cacheMatchesSession : false
 
     if (cachedFeed) {
       setRecommendations(cachedFeed.data.recommendations.slice(0, 18))
@@ -222,6 +232,7 @@ const Home = () => {
       setVisibleSongs(INITIAL_SONGS)
       setHasMoreContent(true)
       writeHomeCache(feed)
+      lastNetworkRefreshAtRef.current = Date.now()
       setIsBootstrapping(false)
     } catch (error) {
       console.error('WindSound home error:', error)
@@ -232,10 +243,48 @@ const Home = () => {
         setIsBootstrapping(false)
       }
     }
-  }, [readHomeCache, setAccountStatus, writeHomeCache])
+  }, [accountStatus.connected, readHomeCache, setAccountStatus, writeHomeCache])
 
   useEffect(() => {
     void bootstrapHome()
+  }, [bootstrapHome])
+
+  useEffect(() => {
+    if (mountedAccountStateRef.current === null) {
+      mountedAccountStateRef.current = accountStatus.connected
+      return
+    }
+
+    if (mountedAccountStateRef.current === accountStatus.connected) {
+      return
+    }
+
+    mountedAccountStateRef.current = accountStatus.connected
+    void bootstrapHome({ forceNetwork: true })
+  }, [accountStatus.connected, bootstrapHome])
+
+  useEffect(() => {
+    const refreshIfStale = () => {
+      const now = Date.now()
+
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+
+      if (now - lastNetworkRefreshAtRef.current < getHomeRefreshInterval()) {
+        return
+      }
+
+      void bootstrapHome({ forceNetwork: true })
+    }
+
+    window.addEventListener('focus', refreshIfStale)
+    document.addEventListener('visibilitychange', refreshIfStale)
+
+    return () => {
+      window.removeEventListener('focus', refreshIfStale)
+      document.removeEventListener('visibilitychange', refreshIfStale)
+    }
   }, [bootstrapHome])
 
   const loadMoreContent = useCallback(async () => {
@@ -255,8 +304,40 @@ const Home = () => {
       return
     }
 
-    setHasMoreContent(false)
-  }, [currentView, hasMoreContent, isLoadingMore, playlistItems.length, songItems.length, visiblePlaylists, visibleSongs])
+    setIsLoadingMore(true)
+
+    try {
+      const feed = await getHomeFeed()
+      const previousPlaylistCount = playlistItems.length
+      const previousSongCount = songItems.length
+
+      mergeFeed(feed)
+
+      const nextPlaylistCount = uniqueBy(
+        [...playlistItems, ...flattenSectionItems(feed.playlistSections)],
+        (item) => item.browseId ?? item.id,
+      ).length
+      const nextSongCount = uniqueBy(
+        [...songItems, ...flattenSectionItems(feed.songSections)],
+        (item) => item.videoId ?? item.id,
+      ).length
+
+      const foundMoreContent = nextPlaylistCount > previousPlaylistCount || nextSongCount > previousSongCount
+
+      if (foundMoreContent) {
+        setVisiblePlaylists((current) => Math.min(current + PLAYLISTS_PER_PAGE, nextPlaylistCount))
+        setVisibleSongs((current) => Math.min(current + SONGS_PER_PAGE, nextSongCount))
+        lastNetworkRefreshAtRef.current = Date.now()
+      } else {
+        setHasMoreContent(false)
+      }
+    } catch (error) {
+      console.error('WindSound home pagination error:', error)
+      setHasMoreContent(false)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [currentView, hasMoreContent, isLoadingMore, mergeFeed, playlistItems, songItems, visiblePlaylists, visibleSongs])
 
   useEffect(() => {
     const target = sentinelRef.current
@@ -302,12 +383,12 @@ const Home = () => {
   }
 
   const visibleRecommendationItems = useMemo(
-    () => clampToFullRows(recommendations.slice(0, INITIAL_RECOMMENDATIONS), 5),
+    () => clampToFullRows(recommendations.slice(0, INITIAL_RECOMMENDATIONS), 5, 10),
     [recommendations],
   )
   const visiblePlaylistItems = useMemo(() => playlistItems.slice(0, visiblePlaylists), [playlistItems, visiblePlaylists])
   const visibleSongItems = useMemo(
-    () => clampToFullRows(songItems.slice(0, visibleSongs), 6),
+    () => clampToFullRows(songItems.slice(0, visibleSongs), 6, 12),
     [songItems, visibleSongs],
   )
   const fixedPlaylistSections = useMemo(() => buildFixedPlaylistSections(visiblePlaylistItems), [visiblePlaylistItems])
@@ -323,26 +404,27 @@ const Home = () => {
         </div>
         <div className="grid gap-2.5 md:grid-cols-3 xl:grid-cols-5">
           {visibleRecommendationItems.map((item) => (
-            <button
+            <div
               key={item.id}
-              type="button"
-              onClick={() => playTrack(item)}
               className="flex items-center gap-3 rounded-[9px] bg-[color:color-mix(in_srgb,var(--color-surface)_88%,transparent)] p-3 text-left transition duration-150 hover:bg-[color:color-mix(in_srgb,var(--color-surface2)_94%,transparent)]"
             >
-              <img
-                src={item.thumbnail}
-                alt={item.title}
-                className="h-12 w-12 rounded-[7px] object-cover"
-                onError={(event) => {
-                  event.currentTarget.onerror = null
-                  event.currentTarget.src = makeFallbackThumbnail(item.title)
-                }}
-              />
-              <div className="min-w-0">
-                <p className="truncate text-[13px] font-medium text-[var(--color-text)]">{item.title}</p>
-                <p className="truncate text-[11px] text-[var(--color-subtext)]">{item.channelTitle}</p>
-              </div>
-            </button>
+              <button type="button" onClick={() => playTrack(item)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <img
+                  src={item.thumbnail}
+                  alt={item.title}
+                  referrerPolicy="no-referrer"
+                  className="h-12 w-12 rounded-[7px] object-cover"
+                  onError={(event) => {
+                    event.currentTarget.onerror = null
+                    event.currentTarget.src = createReliableThumbnail(item.videoId, item.title)
+                  }}
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium text-[var(--color-text)]">{item.title}</p>
+                  <p className="truncate text-[11px] text-[var(--color-subtext)]">{item.channelTitle}</p>
+                </div>
+              </button>
+            </div>
           ))}
         </div>
       </div>
@@ -366,10 +448,11 @@ const Home = () => {
                       <img
                         src={item.thumbnail}
                         alt={item.title}
+                        referrerPolicy="no-referrer"
                         className="h-16 w-16 rounded-[7px] object-cover"
                         onError={(event) => {
                           event.currentTarget.onerror = null
-                          event.currentTarget.src = makeFallbackThumbnail(item.title)
+                          event.currentTarget.src = createReliableThumbnail(item.videoId, item.title)
                         }}
                       />
                       <div className="min-w-0">
@@ -394,38 +477,43 @@ const Home = () => {
         </div>
         <div className="grid gap-2.5 md:grid-cols-3 xl:grid-cols-6">
           {visibleSongItems.map((item) => (
-            <button
+            <div
               key={item.id}
-              type="button"
-              onClick={() =>
-                item.videoId
-                  ? playTrack({
-                      id: item.videoId,
-                      videoId: item.videoId,
-                      title: item.title,
-                      channelTitle: item.subtitle,
-                      thumbnail: item.thumbnail,
-                      duration: 0,
-                      durationLabel: '--:--',
-                    })
-                  : undefined
-              }
-                className="overflow-hidden rounded-[8px] bg-[color:color-mix(in_srgb,var(--color-surface)_88%,transparent)] text-left transition duration-150 hover:bg-[color:color-mix(in_srgb,var(--color-surface2)_94%,transparent)]"
+              className="overflow-hidden rounded-[10px] bg-[color:color-mix(in_srgb,var(--color-surface)_88%,transparent)] text-left transition duration-150 hover:bg-[color:color-mix(in_srgb,var(--color-surface2)_94%,transparent)]"
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  item.videoId
+                    ? playTrack({
+                        id: item.videoId,
+                        videoId: item.videoId,
+                        title: item.title,
+                        channelTitle: item.subtitle,
+                        thumbnail: item.thumbnail,
+                        duration: 0,
+                        durationLabel: '--:--',
+                      })
+                    : undefined
+                }
+                className="w-full text-left"
               >
                 <img
                   src={item.thumbnail}
                   alt={item.title}
+                  referrerPolicy="no-referrer"
                   className="aspect-square w-full object-cover"
                   onError={(event) => {
                     event.currentTarget.onerror = null
-                    event.currentTarget.src = makeFallbackThumbnail(item.title)
+                    event.currentTarget.src = createReliableThumbnail(item.videoId, item.title)
                   }}
                 />
                 <div className="p-2.5">
                   <p className="truncate text-[12px] font-medium text-[var(--color-text)]">{item.title}</p>
                   <p className="mt-1 truncate text-[10px] text-[var(--color-subtext)]">{item.subtitle}</p>
                 </div>
-            </button>
+              </button>
+            </div>
           ))}
         </div>
       </div>
@@ -449,10 +537,11 @@ const Home = () => {
                       <img
                         src={item.thumbnail}
                         alt={item.title}
+                        referrerPolicy="no-referrer"
                         className="h-16 w-16 rounded-[7px] object-cover"
                         onError={(event) => {
                           event.currentTarget.onerror = null
-                          event.currentTarget.src = makeFallbackThumbnail(item.title)
+                          event.currentTarget.src = createReliableThumbnail(item.videoId, item.title)
                         }}
                       />
                       <div className="min-w-0">

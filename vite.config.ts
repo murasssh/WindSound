@@ -14,8 +14,8 @@ export default defineConfig({
         },
         vite: {
           build: {
-            sourcemap: true,
-            minify: false,
+            sourcemap: false,
+            minify: 'esbuild',
             outDir: 'dist-electron',
             rollupOptions: {
               external: ['electron']

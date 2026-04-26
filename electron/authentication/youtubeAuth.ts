@@ -1,9 +1,8 @@
 import { createHash } from 'crypto'
 import { BrowserWindow, net, session } from 'electron'
+import { getInnertubeEndpointUrl, getWebRemixClientVersion } from '../config/innertube'
 
 const MUSIC_ORIGIN = 'https://music.youtube.com'
-const INNERTUBE_BASE = 'https://music.youtube.com/youtubei/v1'
-const INNERTUBE_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30'
 
 const DEFAULT_CLIENT = {
   clientName: 'WEB_REMIX',
@@ -116,6 +115,22 @@ const extractThumbnailUrl = (value: unknown): string | null => {
     return candidate.url.trim()
   }
 
+  if (typeof candidate.src === 'string' && candidate.src.trim()) {
+    return candidate.src.trim()
+  }
+
+  if (typeof candidate.srcset === 'string' && candidate.srcset.trim()) {
+    const fromSrcSet = candidate.srcset
+      .split(',')
+      .map((entry) => entry.trim().split(/\s+/)[0])
+      .filter(Boolean)
+      .at(-1)
+
+    if (fromSrcSet) {
+      return fromSrcSet
+    }
+  }
+
   return (
     extractThumbnailUrl(candidate.thumbnails) ??
     extractThumbnailUrl(candidate.sources) ??
@@ -126,13 +141,27 @@ const extractThumbnailUrl = (value: unknown): string | null => {
   )
 }
 
+const normalizeAvatarUrl = (value?: string | null) => {
+  const trimmed = value?.trim()
+
+  if (!trimmed) {
+    return null
+  }
+
+  const normalizedProtocol = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed
+
+  return normalizedProtocol
+    .replace(/=s\d+(?:-c)?(?:-[a-z0-9-]+)?$/i, '=s256-c-k-c0x00ffffff-no-rj')
+    .replace(/=w\d+-h\d+(?:-[a-z0-9-]+)*$/i, '=s256-c-k-c0x00ffffff-no-rj')
+}
+
 const normalizeProfile = (profile?: { displayName?: string | null; avatarUrl?: string | null } | null) => {
   if (!profile) {
     return null
   }
 
   const displayName = parseAccountLabel(profile.displayName) ?? extractText(profile.displayName) ?? null
-  const avatarUrl = profile.avatarUrl?.trim() || null
+  const avatarUrl = normalizeAvatarUrl(profile.avatarUrl)
 
   if (!displayName && !avatarUrl) {
     return null
@@ -245,6 +274,7 @@ const findAccountProfile = (value: unknown): { displayName?: string | null; avat
 }
 
 const fetchProfileFromAccountsList = async () => {
+  const webRemixVersion = await getWebRemixClientVersion()
   const attempts = [
     {
       client: TV_CLIENT,
@@ -260,12 +290,15 @@ const fetchProfileFromAccountsList = async () => {
       },
     },
     {
-      client: DEFAULT_CLIENT,
+      client: {
+        ...DEFAULT_CLIENT,
+        clientVersion: webRemixVersion,
+      },
       body: {
         context: {
           client: {
             clientName: DEFAULT_CLIENT.clientName,
-            clientVersion: DEFAULT_CLIENT.clientVersion,
+            clientVersion: webRemixVersion,
             hl: 'pt-BR',
             gl: 'BR',
           },
@@ -277,7 +310,7 @@ const fetchProfileFromAccountsList = async () => {
   ]
 
   for (const attempt of attempts) {
-    const response = await net.fetch(`${INNERTUBE_BASE}/account/accounts_list?key=${INNERTUBE_KEY}&prettyPrint=false`, {
+    const response = await net.fetch(await getInnertubeEndpointUrl('account/accounts_list'), {
       method: 'POST',
       credentials: 'include',
       headers: await createInnertubeHeaders(attempt.client, null, { includeAuth: true }),
@@ -315,42 +348,81 @@ const fetchProfileFromHiddenWindow = async () => {
 
   try {
     await hiddenWindow.loadURL(MUSIC_ORIGIN)
-    await wait(1200)
-
-    const profile = (await hiddenWindow.webContents.executeJavaScript(`
-      (() => {
-        const buttons = [...document.querySelectorAll('button, a')]
-        const accountButton =
-          buttons.find((element) => /google account|conta do google|account/i.test(element.getAttribute('aria-label') || '')) ||
-          buttons.find((element) => element.querySelector('img') && /googleusercontent|yt3\\.ggpht|yt3\\.googleusercontent/i.test(element.querySelector('img')?.src || ''))
-
-        const image = accountButton?.querySelector('img') ||
-          [...document.querySelectorAll('img')].find((img) => /googleusercontent|yt3\\.ggpht|yt3\\.googleusercontent/i.test(img.src || ''))
-
-        const inlineName =
-          accountButton?.querySelector('[title]')?.getAttribute('title') ||
-          accountButton?.querySelector('[aria-label]')?.getAttribute('aria-label') ||
-          accountButton?.textContent ||
-          ''
-
-        return {
-          label: accountButton?.getAttribute('aria-label') || '',
-          text: inlineName.trim(),
-          imageSrc: image?.src || null,
+    await hiddenWindow.webContents.executeJavaScript(`
+      new Promise((resolve) => {
+        if (document.readyState === 'complete') {
+          resolve(true)
+          return
         }
-      })()
-    `)) as { label?: string; text?: string; imageSrc?: string | null }
 
-    const displayName =
-      parseAccountLabel(profile.label) ??
-      parseAccountLabel(profile.text) ??
-      profile.text?.trim() ??
-      'Conta do YouTube'
+        window.addEventListener('load', () => resolve(true), { once: true })
+        setTimeout(() => resolve(true), 2500)
+      })
+    `)
 
-    return normalizeProfile({
-      displayName,
-      avatarUrl: profile.imageSrc || null,
-    })
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (attempt > 0) {
+        await wait(800)
+      }
+
+      const profile = (await hiddenWindow.webContents.executeJavaScript(`
+        (() => {
+          const selectors = [
+            'button[aria-label*="Google"] img',
+            'button[aria-label*="google"] img',
+            'button[aria-label*="Conta"] img',
+            'button[aria-label*="account"] img',
+            'ytmusic-settings-button img',
+            'img[alt*="@"]',
+            'img[src*="googleusercontent"]',
+            'img[src*="yt3.ggpht"]',
+            'img[src*="yt3.googleusercontent"]',
+          ]
+
+          const image = selectors
+            .map((selector) => document.querySelector(selector))
+            .find(Boolean)
+
+          const clickable = image?.closest('button, a') || [...document.querySelectorAll('button, a')].find((element) => {
+            const label = element.getAttribute('aria-label') || element.textContent || ''
+            return /google account|conta do google|youtube music|account/i.test(label)
+          })
+
+          const titleCandidate = image?.getAttribute('alt') ||
+            clickable?.getAttribute('aria-label') ||
+            clickable?.textContent ||
+            document.querySelector('ytmusic-settings-button')?.getAttribute('aria-label') ||
+            ''
+
+          return {
+            label: clickable?.getAttribute('aria-label') || '',
+            text: titleCandidate.trim(),
+            imageSrc:
+              image?.getAttribute('src') ||
+              image?.getAttribute('data-src') ||
+              image?.getAttribute('srcset')?.split(',').map((entry) => entry.trim().split(/\\s+/)[0]).filter(Boolean).at(-1) ||
+              null,
+          }
+        })()
+      `)) as { label?: string; text?: string; imageSrc?: string | null }
+
+      const displayName =
+        parseAccountLabel(profile.label) ??
+        parseAccountLabel(profile.text) ??
+        profile.text?.trim() ??
+        'Conta do YouTube'
+
+      const normalized = normalizeProfile({
+        displayName,
+        avatarUrl: profile.imageSrc || null,
+      })
+
+      if (normalized?.avatarUrl || normalized?.displayName) {
+        return normalized
+      }
+    }
+
+    return null
   } finally {
     if (!hiddenWindow.isDestroyed()) {
       hiddenWindow.destroy()
@@ -423,6 +495,7 @@ export const createInnertubeHeaders = async (
 
 export const getYouTubeAccountStatus = async (): Promise<AccountStatus> => {
   const authorization = await buildAuthorizationHeader()
+  const webRemixVersion = await getWebRemixClientVersion()
 
   if (!authorization) {
     cachedProfile = null
@@ -437,15 +510,18 @@ export const getYouTubeAccountStatus = async (): Promise<AccountStatus> => {
   }
 
   try {
-    const response = await net.fetch(`${INNERTUBE_BASE}/browse?key=${INNERTUBE_KEY}&prettyPrint=false`, {
+    const response = await net.fetch(await getInnertubeEndpointUrl('browse'), {
       method: 'POST',
       credentials: 'include',
-      headers: await createInnertubeHeaders(DEFAULT_CLIENT),
+      headers: await createInnertubeHeaders({
+        ...DEFAULT_CLIENT,
+        clientVersion: webRemixVersion,
+      }),
       body: JSON.stringify({
         context: {
           client: {
             clientName: DEFAULT_CLIENT.clientName,
-            clientVersion: DEFAULT_CLIENT.clientVersion,
+            clientVersion: webRemixVersion,
             hl: 'pt-BR',
             gl: 'BR',
           },
@@ -472,6 +548,18 @@ export const getYouTubeAccountStatus = async (): Promise<AccountStatus> => {
     }
   } catch (error) {
     console.error('[WindSound auth] failed to validate session', error)
+  }
+
+  const detectedProfile = await getCachedProfile()
+
+  if (authorization) {
+    return {
+      connected: true,
+      source: 'cookie-session',
+      message: 'Sessao detectada. O WindSound vai sincronizar a Home personalizada assim que o YouTube Music responder.',
+      displayName: detectedProfile?.displayName ?? 'Conta do YouTube',
+      avatarUrl: detectedProfile?.avatarUrl ?? null,
+    }
   }
 
   return {

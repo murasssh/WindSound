@@ -36,6 +36,7 @@ export interface Track {
   thumbnail: string
   duration: number
   durationLabel: string
+  mediaType?: 'audio' | 'video'
   album?: string
 }
 
@@ -61,7 +62,10 @@ export interface VideoDetails {
   thumbnail: string
   duration: number
   durationLabel: string
+  hasVideoClip?: boolean
   streamUrl?: string | null
+  fallbackStreamUrl?: string | null
+  rawStreamUrl?: string | null
 }
 
 export interface HomeSectionItem {
@@ -90,9 +94,38 @@ export interface RecommendationItem extends Track {
   reason: string
 }
 
+export interface LocalPlaylist {
+  id: string
+  name: string
+  description?: string
+  source: 'local' | 'youtube'
+  thumbnail?: string
+  syncSource?: {
+    platform: 'youtube'
+    browseId: string
+    channelTitle: string
+    syncedAt: number
+  }
+  tracks: Track[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface YouTubePlaylist {
+  id: string
+  browseId: string
+  title: string
+  channelTitle: string
+  thumbnail: string
+  tracks: Track[]
+  syncedAt: number
+}
+
 export interface PlayerStore {
   queue: Track[]
+  playlists: LocalPlaylist[]
   currentIndex: number
+  isNowPlayingExpanded: boolean
   isPlaying: boolean
   isMuted: boolean
   volume: number
@@ -108,6 +141,18 @@ export interface PlayerStore {
   accountStatus: AccountStatus
   setCurrentView: (view: AppView) => void
   setAccountStatus: (status: AccountStatus) => void
+  createPlaylist: (name: string, tracks?: Track[]) => string
+  renamePlaylist: (playlistId: string, name: string) => void
+  deletePlaylist: (playlistId: string) => void
+  addTrackToPlaylist: (playlistId: string, track: Track) => void
+  saveYouTubePlaylist: (playlist: YouTubePlaylist) => string
+  removeYouTubePlaylist: (browseId: string) => void
+  saveQueueAsPlaylist: (name: string) => string | null
+  mergeQueueIntoPlaylist: (playlistId: string) => void
+  playPlaylist: (playlistId: string, startIndex?: number) => void
+  playYouTubePlaylist: (browseId: string, startIndex?: number) => void
+  removeTrackFromPlaylist: (playlistId: string, trackIndex: number) => void
+  movePlaylistTrack: (playlistId: string, oldIndex: number, newIndex: number) => void
   addToQueue: (track: Track) => void
   playTrack: (track: Track) => Promise<void>
   startPlaylist: (tracks: Track[], startIndex?: number) => void
@@ -115,6 +160,8 @@ export interface PlayerStore {
   removeFromQueue: (index: number) => void
   clearQueue: () => void
   moveTrack: (oldIndex: number, newIndex: number) => void
+  setNowPlayingExpanded: (value: boolean) => void
+  toggleNowPlayingExpanded: () => void
   setIsPlaying: (isPlaying: boolean) => void
   togglePlayState: () => void
   setMuted: (isMuted: boolean) => void

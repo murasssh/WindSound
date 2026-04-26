@@ -35,3 +35,9 @@ Thumbs.db
 # local runtime data
 coverage/
 *.tsbuildinfo
+session-backups/
+
+# build directories
+build/
+portable-build/
+portable-build-noicon/

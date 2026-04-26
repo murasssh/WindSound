@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ChevronRight, Cog, Home, Search } from 'lucide-react'
+import { ChevronRight, Cog, Home, Library, Search } from 'lucide-react'
 import { connectYouTubeAccount, disconnectYouTubeAccount, getAccountStatus } from '@/integrations/youtube'
 import { usePlayerStore } from '@/state/playerStore'
 import type { AppView } from '@/types'
@@ -7,6 +7,7 @@ import type { AppView } from '@/types'
 const NAV_ITEMS: Array<{ id: AppView; label: string; icon: typeof Search }> = [
   { id: 'home', label: 'Inicio', icon: Home },
   { id: 'search', label: 'Buscar', icon: Search },
+  { id: 'queue', label: 'Playlists', icon: Library },
 ]
 
 const makeAvatarFallback = (label: string) =>
@@ -55,6 +56,7 @@ const Sidebar = () => {
     try {
       const status = await connectYouTubeAccount()
       setAccountStatus(status)
+      setShowDisconnectHint(false)
     } finally {
       setIsConnecting(false)
     }
@@ -203,6 +205,7 @@ const Sidebar = () => {
           <img
             src={avatarSrc}
             alt={displayName}
+            referrerPolicy="no-referrer"
             className="h-12 w-12 shrink-0 rounded-full object-cover"
             onError={(event) => {
               event.currentTarget.onerror = null

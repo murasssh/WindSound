@@ -3,22 +3,22 @@ import type { ThemeConfig } from '@/types'
 export const themePresets: ThemeConfig[] = [
   {
     id: 'dark-modern',
-    label: 'Dark Modern',
+    label: 'Moderno Escuro',
     colors: {
       bg: '#0d0d0d',
       surface: '#161616',
       surface2: '#1f1f1f',
       border: '#2a2a2a',
-      accent: '#7c3aed',
-      accent2: '#9f5cf7',
+      accent: '#4a8df0',
+      accent2: '#6aa8ff',
       text: '#f5f5f5',
       subtext: '#737373',
-      waveform: '#8b5cf6',
+      waveform: '#5a9cff',
     },
   },
   {
     id: 'midnight-blue',
-    label: 'Midnight Blue',
+    label: 'Azul Noturno',
     colors: {
       bg: '#09111f',
       surface: '#0f1a2d',
@@ -33,7 +33,7 @@ export const themePresets: ThemeConfig[] = [
   },
   {
     id: 'forest-dark',
-    label: 'Forest Dark',
+    label: 'Floresta Escura',
     colors: {
       bg: '#0b120f',
       surface: '#131d18',
@@ -48,7 +48,7 @@ export const themePresets: ThemeConfig[] = [
   },
   {
     id: 'crimson',
-    label: 'Crimson',
+    label: 'Carmesim',
     colors: {
       bg: '#14090c',
       surface: '#1d1014',

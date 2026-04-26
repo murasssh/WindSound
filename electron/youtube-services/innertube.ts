@@ -1,10 +1,8 @@
 import { net } from 'electron'
 import { createInnertubeHeaders, type InnertubeClient } from '../authentication/youtubeAuth'
+import { getInnertubeEndpointUrl, getWebRemixClientVersion } from '../config/innertube'
 
-const INNERTUBE_BASE = 'https://music.youtube.com/youtubei/v1'
-const INNERTUBE_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30'
 const CLIENT_NAME = 'WEB_REMIX'
-const CLIENT_VERSION = '1.20260213.01.00'
 const CLIENT_ID = '67'
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0'
 
@@ -30,9 +28,10 @@ export const innertubeRequest = async (
   payload: Record<string, unknown>,
   maxAttempts = 3,
 ): Promise<unknown> => {
+  const defaultClientVersion = await getWebRemixClientVersion()
   const client = (payload.__client as InnertubeClient | undefined) ?? {
     clientName: CLIENT_NAME,
-    clientVersion: CLIENT_VERSION,
+    clientVersion: defaultClientVersion,
     clientId: CLIENT_ID,
     userAgent: USER_AGENT,
   }
@@ -42,7 +41,7 @@ export const innertubeRequest = async (
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const response = await net.fetch(`${INNERTUBE_BASE}/${endpoint}?key=${INNERTUBE_KEY}&prettyPrint=false`, {
+      const response = await net.fetch(await getInnertubeEndpointUrl(endpoint), {
         method: 'POST',
         credentials: useAuthenticatedHeaders ? 'include' : 'omit',
         headers: await createInnertubeHeaders(client, visitorData, {

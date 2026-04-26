@@ -31,6 +31,7 @@ declare global {
           album?: string
         }>
       >
+      primePlayback: (videoId: string, fallbackUrl: string) => Promise<boolean>
       createStreamUrl: (streamUrl: string) => string
       createPlaybackUrl: (videoId: string) => string
       getAuthStatus: () => Promise<{
@@ -64,6 +65,7 @@ declare global {
       rel?: 0 | 1
       modestbranding?: 0 | 1
       playsinline?: 0 | 1
+      origin?: string
     }
 
     interface PlayerEvent {
@@ -75,6 +77,7 @@ declare global {
       height?: string
       width?: string
       videoId?: string
+      host?: string
       playerVars?: PlayerVars
       events?: {
         onReady?: (event: PlayerEvent) => void
@@ -97,6 +100,7 @@ declare global {
       mute(): void
       unMute(): void
       setVolume(volume: number): void
+      setPlaybackQuality(suggestedQuality: string): void
       getDuration(): number
       getCurrentTime(): number
       seekTo(seconds: number, allowSeekAhead?: boolean): void

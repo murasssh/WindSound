@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { defaultTheme } from '@/theme/theme'
 import { buildSmartQueue, getRadioCandidate } from '@/integrations/youtube'
-import type { PlayerStore, ThemeTokens, Track } from '@/types'
+import type { LocalPlaylist, PlayerStore, ThemeTokens, Track, YouTubePlaylist } from '@/types'
 
 const pickRandomIndex = (queue: Track[], currentIndex: number) => {
   if (queue.length <= 1) {
@@ -18,11 +18,52 @@ const pickRandomIndex = (queue: Track[], currentIndex: number) => {
   return nextIndex
 }
 
+const now = () => Date.now()
+
+const createPlaylistId = () =>
+  `playlist-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+
+const uniqueTracks = (tracks: Track[]) => {
+  const seen = new Set<string>()
+
+  return tracks.filter((track) => {
+    if (seen.has(track.videoId)) {
+      return false
+    }
+
+    seen.add(track.videoId)
+    return true
+  })
+}
+
+const sanitizePlaylistTracks = (tracks: Track[]) => uniqueTracks(tracks.filter(Boolean))
+
+const createYouTubeBackedPlaylist = (
+  playlist: YouTubePlaylist,
+  existing?: LocalPlaylist,
+): LocalPlaylist => ({
+  id: existing?.id ?? playlist.id ?? createPlaylistId(),
+  name: playlist.title,
+  source: 'youtube',
+  thumbnail: playlist.thumbnail,
+  syncSource: {
+    platform: 'youtube',
+    browseId: playlist.browseId,
+    channelTitle: playlist.channelTitle,
+    syncedAt: playlist.syncedAt,
+  },
+  tracks: sanitizePlaylistTracks(playlist.tracks),
+  createdAt: existing?.createdAt ?? now(),
+  updatedAt: now(),
+})
+
 export const usePlayerStore = create<PlayerStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       queue: [],
+      playlists: [],
       currentIndex: -1,
+      isNowPlayingExpanded: false,
       isPlaying: false,
       isMuted: false,
       volume: 70,
@@ -42,6 +83,178 @@ export const usePlayerStore = create<PlayerStore>()(
       },
       setCurrentView: (currentView) => set({ currentView }),
       setAccountStatus: (accountStatus) => set({ accountStatus }),
+      createPlaylist: (name, tracks = []) => {
+        const playlistName = name.trim() || 'Nova playlist'
+        const playlistId = createPlaylistId()
+        const playlist: LocalPlaylist = {
+          id: playlistId,
+          name: playlistName,
+          source: 'local',
+          tracks: sanitizePlaylistTracks(tracks),
+          createdAt: now(),
+          updatedAt: now(),
+        }
+
+        set((state) => ({
+          playlists: [playlist, ...state.playlists],
+          currentView: 'queue',
+        }))
+
+        return playlistId
+      },
+      addTrackToPlaylist: (playlistId, track) =>
+        set((state) => ({
+          playlists: state.playlists.map((playlist) =>
+            playlist.id === playlistId
+              ? {
+                  ...playlist,
+                  tracks: sanitizePlaylistTracks([...playlist.tracks, track]),
+                  updatedAt: now(),
+                }
+              : playlist,
+          ),
+        })),
+      renamePlaylist: (playlistId, name) =>
+        set((state) => ({
+          playlists: state.playlists.map((playlist) =>
+            playlist.id === playlistId
+              ? {
+                  ...playlist,
+                  name: name.trim() || playlist.name,
+                  updatedAt: now(),
+                }
+              : playlist,
+          ),
+        })),
+      deletePlaylist: (playlistId) =>
+        set((state) => ({
+          playlists: state.playlists.filter((playlist) => playlist.id !== playlistId),
+        })),
+      saveYouTubePlaylist: (playlist) => {
+        const syncedId =
+          get().playlists.find((item) => item.syncSource?.browseId === playlist.browseId)?.id ?? playlist.id
+
+        set((state) => {
+          const existing = state.playlists.find((item) => item.id === syncedId)
+          const nextPlaylist = createYouTubeBackedPlaylist(playlist, existing)
+
+          return {
+            playlists: [
+              nextPlaylist,
+              ...state.playlists.filter((item) => item.id !== syncedId),
+            ],
+            currentView: 'queue',
+          }
+        })
+
+        return syncedId
+      },
+      removeYouTubePlaylist: (browseId) =>
+        set((state) => ({
+          playlists: state.playlists.filter((playlist) => playlist.syncSource?.browseId !== browseId),
+        })),
+      saveQueueAsPlaylist: (name) => {
+        const state = get()
+
+        if (state.queue.length === 0) {
+          return null
+        }
+
+        const playlistId = createPlaylistId()
+        const playlist: LocalPlaylist = {
+          id: playlistId,
+          name: name.trim() || 'Minha playlist',
+          source: 'local',
+          tracks: sanitizePlaylistTracks(state.queue),
+          createdAt: now(),
+          updatedAt: now(),
+        }
+
+        set((currentState) => ({
+          playlists: [playlist, ...currentState.playlists],
+          currentView: 'queue',
+        }))
+
+        return playlistId
+      },
+      mergeQueueIntoPlaylist: (playlistId) =>
+        set((state) => ({
+          playlists: state.playlists.map((playlist) =>
+            playlist.id === playlistId
+              ? {
+                  ...playlist,
+                  tracks: sanitizePlaylistTracks([...playlist.tracks, ...state.queue]),
+                  updatedAt: now(),
+                }
+              : playlist,
+          ),
+        })),
+      playPlaylist: (playlistId, startIndex = 0) =>
+        set((state) => {
+          const playlist = state.playlists.find((item) => item.id === playlistId)
+          const safeTracks = sanitizePlaylistTracks(playlist?.tracks ?? [])
+          const nextTrack = safeTracks[startIndex]
+
+          if (!nextTrack) {
+            return state
+          }
+
+          return {
+            queue: safeTracks,
+            currentIndex: startIndex,
+            isPlaying: true,
+            progress: 0,
+            duration: nextTrack.duration,
+          }
+        }),
+      playYouTubePlaylist: (browseId, startIndex = 0) =>
+        set((state) => {
+          const playlist = state.playlists.find((item) => item.syncSource?.browseId === browseId)
+          const safeTracks = sanitizePlaylistTracks(playlist?.tracks ?? [])
+          const nextTrack = safeTracks[startIndex]
+
+          if (!nextTrack) {
+            return state
+          }
+
+          return {
+            queue: safeTracks,
+            currentIndex: startIndex,
+            isPlaying: true,
+            progress: 0,
+            duration: nextTrack.duration,
+          }
+        }),
+      removeTrackFromPlaylist: (playlistId, trackIndex) =>
+        set((state) => ({
+          playlists: state.playlists.map((playlist) =>
+            playlist.id === playlistId
+              ? {
+                  ...playlist,
+                  tracks: playlist.tracks.filter((_, index) => index !== trackIndex),
+                  updatedAt: now(),
+                }
+              : playlist,
+          ),
+        })),
+      movePlaylistTrack: (playlistId, oldIndex, newIndex) =>
+        set((state) => ({
+          playlists: state.playlists.map((playlist) => {
+            if (playlist.id !== playlistId || oldIndex === newIndex) {
+              return playlist
+            }
+
+            const tracks = [...playlist.tracks]
+            const [movedTrack] = tracks.splice(oldIndex, 1)
+            tracks.splice(newIndex, 0, movedTrack)
+
+            return {
+              ...playlist,
+              tracks,
+              updatedAt: now(),
+            }
+          }),
+        })),
       addToQueue: (track) =>
         set((state) => ({
           queue: [...state.queue, track],
@@ -155,6 +368,7 @@ export const usePlayerStore = create<PlayerStore>()(
         set({
           queue: [],
           currentIndex: -1,
+          isNowPlayingExpanded: false,
           isPlaying: false,
           progress: 0,
           duration: 0,
@@ -181,6 +395,8 @@ export const usePlayerStore = create<PlayerStore>()(
 
           return { queue, currentIndex }
         }),
+      setNowPlayingExpanded: (isNowPlayingExpanded) => set({ isNowPlayingExpanded }),
+      toggleNowPlayingExpanded: () => set((state) => ({ isNowPlayingExpanded: !state.isNowPlayingExpanded })),
       setIsPlaying: (isPlaying) => set({ isPlaying }),
       togglePlayState: () => set((state) => ({ isPlaying: !state.isPlaying })),
       setMuted: (isMuted) => set({ isMuted }),
@@ -188,7 +404,7 @@ export const usePlayerStore = create<PlayerStore>()(
       setProgress: (progress) => set({ progress }),
       setDuration: (duration) => set({ duration }),
       playNext: async () => {
-        const state = usePlayerStore.getState()
+        const state = get()
 
         if (state.queue.length === 0) {
           return
@@ -264,7 +480,7 @@ export const usePlayerStore = create<PlayerStore>()(
               }
             })
 
-            const refreshedState = usePlayerStore.getState()
+            const refreshedState = get()
 
             if (refreshedState.currentIndex < refreshedState.queue.length - 1) {
               const nextIndex = refreshedState.currentIndex + 1
@@ -345,9 +561,36 @@ export const usePlayerStore = create<PlayerStore>()(
     }),
     {
       name: 'windsound-store',
+      version: 2,
       storage: createJSONStorage(() => localStorage),
+      migrate: (persistedState: any, version) => {
+        if (!persistedState || version >= 2) {
+          return persistedState
+        }
+
+        const existingPlaylists: LocalPlaylist[] = Array.isArray(persistedState.playlists)
+          ? persistedState.playlists.map((playlist: LocalPlaylist) => ({
+              ...playlist,
+              source: playlist.source ?? 'local',
+            }))
+          : []
+
+        const importedYouTubePlaylists: YouTubePlaylist[] = Array.isArray(persistedState.youtubePlaylists)
+          ? persistedState.youtubePlaylists
+          : []
+
+        const migratedYouTubePlaylists = importedYouTubePlaylists.map((playlist) =>
+          createYouTubeBackedPlaylist(playlist),
+        )
+
+        return {
+          ...persistedState,
+          playlists: [...migratedYouTubePlaylists, ...existingPlaylists],
+        }
+      },
       partialize: (state) => ({
         queue: state.queue,
+        playlists: state.playlists,
         currentIndex: state.currentIndex,
         volume: state.volume,
         isMuted: state.isMuted,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ListPlus, LoaderCircle, Play, SearchIcon } from 'lucide-react'
 import { useDebouncedValue } from '@/react-hooks/useDebouncedValue'
 import { getPlaylistTracks, searchCatalog } from '@/integrations/youtube'
@@ -9,6 +9,9 @@ const makeFallbackThumbnail = (label: string) =>
   `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360"><rect width="360" height="360" rx="28" fill="#1b1b1f"/><text x="50%" y="50%" fill="#f4f4f5" font-family="Inter, Arial, sans-serif" font-size="28" letter-spacing="5" text-anchor="middle" dominant-baseline="middle">${label.slice(0, 16).toUpperCase()}</text></svg>`,
   )}`
+
+const createReliableThumbnail = (result: SearchCatalogResult) =>
+  'videoId' in result ? `https://i.ytimg.com/vi/${result.videoId}/hqdefault.jpg` : makeFallbackThumbnail(result.title)
 
 const Search = () => {
   const [query, setQuery] = useState('')
@@ -74,7 +77,7 @@ const Search = () => {
     }
   }
 
-  const searchStarted = useMemo(() => isFocused || query.trim().length > 0 || results.length > 0 || isLoading, [isFocused, query, results.length, isLoading])
+  const searchStarted = isFocused || query.trim().length > 0 || results.length > 0 || isLoading
 
   return (
     <section className="min-h-[calc(100vh-13rem)]">
@@ -127,17 +130,24 @@ const Search = () => {
                   <img
                     src={result.thumbnail}
                     alt={result.title}
+                    referrerPolicy="no-referrer"
                     className="h-20 w-20 rounded-[8px] object-cover"
                     onError={(event) => {
                       event.currentTarget.onerror = null
-                      event.currentTarget.src = makeFallbackThumbnail(result.title)
+                      event.currentTarget.src = createReliableThumbnail(result)
                     }}
                   />
                   <div className="min-w-0 flex-1">
                     <h4 className="truncate text-[15px] font-medium text-[var(--color-text)]">{result.title}</h4>
                     <p className="mt-1 truncate text-[13px] text-[var(--color-subtext)]">{result.channelTitle}</p>
                     <div className="mt-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[var(--color-subtext)]">
-                      {'itemType' in result ? <span>Playlist</span> : <span>{result.durationLabel}</span>}
+                      {'itemType' in result ? (
+                        <span>Playlist</span>
+                      ) : result.mediaType === 'video' ? (
+                        <span>Vídeo</span>
+                      ) : (
+                        <span>{result.durationLabel}</span>
+                      )}
                       {'album' in result && result.album ? <span>{result.album}</span> : null}
                     </div>
                   </div>
@@ -151,14 +161,16 @@ const Search = () => {
                       <Play size={16} fill="currentColor" />
                     </button>
                     {'itemType' in result ? null : (
-                      <button
-                        type="button"
-                        onClick={() => addToQueue(result)}
-                        className="rounded-[8px] border border-[color:color-mix(in_srgb,var(--color-text)_8%,transparent)] bg-[color:color-mix(in_srgb,var(--color-surface2)_90%,transparent)] p-3 text-[var(--color-text)] transition duration-150 hover:scale-[0.98] hover:border-[var(--color-accent)]"
-                        aria-label={`Adicionar ${result.title} na fila`}
-                      >
-                        <ListPlus size={16} />
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => addToQueue(result)}
+                          className="rounded-[8px] border border-[color:color-mix(in_srgb,var(--color-text)_8%,transparent)] bg-[color:color-mix(in_srgb,var(--color-surface2)_90%,transparent)] p-3 text-[var(--color-text)] transition duration-150 hover:scale-[0.98] hover:border-[var(--color-accent)]"
+                          aria-label={`Adicionar ${result.title} na fila`}
+                        >
+                          <ListPlus size={16} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </article>

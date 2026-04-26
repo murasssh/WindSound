@@ -1,16 +1,15 @@
-import type { AccountStatus, HomeFeed, HomeSection, RecommendationItem, SearchCatalogResult, SearchPlaylistResult, SearchResult, Track, VideoDetails } from '@/types'
-
-const INNERTUBE_BASE = 'https://music.youtube.com/youtubei/v1'
-const INNERTUBE_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30'
-
-const CLIENT_CONTEXT = {
-  client: {
-    clientName: 'WEB_REMIX',
-    clientVersion: '1.20250414.03.00',
-    hl: 'pt-BR',
-    gl: 'BR',
-  },
-}
+import type {
+  AccountStatus,
+  HomeFeed,
+  HomeSection,
+  RecommendationItem,
+  SearchCatalogResult,
+  SearchPlaylistResult,
+  SearchResult,
+  Track,
+  VideoDetails,
+  YouTubePlaylist,
+} from '@/types'
 
 const SEARCH_SONGS_PARAMS = 'Eg-KAQwIARAAGAAgACgAMABqChAEEAMQCRAFEAo='
 const ANDROID_CLIENT = {
@@ -25,8 +24,10 @@ const IOS_CLIENT = {
   clientId: '5',
   userAgent: 'com.google.ios.youtube/21.03.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)',
 }
+const playerResponseCache = new Map<string, any>()
 const HOME_RECENT_IDS_KEY = 'windsound-home-recent-ids'
 const HOME_RECENT_LIMIT = 40
+const HOME_REFRESH_INTERVAL_MS = 1000 * 60 * 3
 
 const formatDuration = (seconds: number) => {
   if (!Number.isFinite(seconds) || seconds <= 0) {
@@ -46,11 +47,16 @@ const formatDuration = (seconds: number) => {
 }
 
 const parseDurationText = (value: string) => {
-  const parts = value
-    .trim()
-    .split(':')
-    .map((part) => Number(part))
-    .filter((part) => Number.isFinite(part))
+  const rawParts = value.trim().split(':')
+  const parts: number[] = []
+
+  for (let index = 0; index < rawParts.length; index += 1) {
+    const nextPart = Number(rawParts[index])
+
+    if (Number.isFinite(nextPart)) {
+      parts.push(nextPart)
+    }
+  }
 
   if (parts.length === 0) {
     return 0
@@ -67,8 +73,19 @@ const parseDurationText = (value: string) => {
   return parts[0]
 }
 
-const getRunsText = (runs: Array<{ text?: string }> | undefined) =>
-  (runs ?? []).map((run) => run.text ?? '').join('').trim()
+const getRunsText = (runs: Array<{ text?: string }> | undefined) => {
+  if (!runs || runs.length === 0) {
+    return ''
+  }
+
+  let text = ''
+
+  for (let index = 0; index < runs.length; index += 1) {
+    text += runs[index]?.text ?? ''
+  }
+
+  return text.trim()
+}
 
 const createThumbnailFallback = (label: string) => {
   const safeLabel = encodeURIComponent(label.slice(0, 18).toUpperCase() || 'WINDSOUND')
@@ -87,8 +104,9 @@ const normalizeThumbnailUrl = (url: string) => {
     next = `https:${next}`
   }
 
-  next = next.replace(/=w\d+-h\d+(?:-[a-z0-9-]+)?$/i, '=w544-h544')
-  next = next.replace(/-w\d+-h\d+(?:-[a-z0-9-]+)?(?=$|\?)/i, '-w544-h544')
+  next = next.replace(/=w\d+-h\d+(?:-[a-z0-9-]+)*$/i, '=w544-h544-p-l90-rj')
+  next = next.replace(/-w\d+-h\d+(?:-[a-z0-9-]+)*(?=$|\?)/i, '-w544-h544')
+  next = next.replace(/=s\d+(?:-[a-z0-9-]+)*$/i, '=s544')
   next = next.replace('w120-h120', 'w544-h544')
 
   return next
@@ -125,17 +143,21 @@ const shuffleItems = <T>(items: T[]) => {
 
 const uniqueBy = <T>(items: T[], getKey: (item: T) => string) => {
   const seen = new Set<string>()
+  const results: T[] = []
 
-  return items.filter((item) => {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]
     const key = getKey(item)
 
     if (seen.has(key)) {
-      return false
+      continue
     }
 
     seen.add(key)
-    return true
-  })
+    results.push(item)
+  }
+
+  return results
 }
 
 const getRecentHomeIds = () => {
@@ -185,22 +207,34 @@ const normalizeText = (value: string) =>
     .trim()
 
 const collectRenderers = (node: unknown, rendererKey: string, results: any[] = []): any[] => {
-  if (!node || typeof node !== 'object') {
-    return results
+  const stack: unknown[] = [node]
+
+  while (stack.length > 0) {
+    const current = stack.pop()
+
+    if (!current || typeof current !== 'object') {
+      continue
+    }
+
+    if (Array.isArray(current)) {
+      for (let index = current.length - 1; index >= 0; index -= 1) {
+        stack.push(current[index])
+      }
+      continue
+    }
+
+    const record = current as Record<string, unknown>
+
+    if (rendererKey in record) {
+      results.push(record[rendererKey])
+    }
+
+    const keys = Object.keys(record)
+    for (let index = keys.length - 1; index >= 0; index -= 1) {
+      stack.push(record[keys[index]])
+    }
   }
 
-  if (Array.isArray(node)) {
-    node.forEach((item) => collectRenderers(item, rendererKey, results))
-    return results
-  }
-
-  const record = node as Record<string, unknown>
-
-  if (rendererKey in record) {
-    results.push(record[rendererKey])
-  }
-
-  Object.values(record).forEach((value) => collectRenderers(value, rendererKey, results))
   return results
 }
 
@@ -237,34 +271,129 @@ const isPlaylistSection = (section: HomeSection) => {
   return playlistLikeItems >= Math.ceil(section.items.length / 2)
 }
 
+const CLIP_POSITIVE_PATTERNS = [
+  /official music video/i,
+  /official video/i,
+  /music video/i,
+  /videoclipe oficial/i,
+  /videoclipe/i,
+  /\bclip oficial\b/i,
+  /\bmv\b/i,
+] as const
+
+const CLIP_NEGATIVE_PATTERNS = [
+  /\blyrics?\b/i,
+  /\baudio\b/i,
+  /\btopic\b/i,
+  /provided to youtube by/i,
+  /\bvisualizer\b/i,
+  /\bkaraoke\b/i,
+  /\binstrumental\b/i,
+  /\bsped up\b/i,
+  /\bslowed\b/i,
+  /\bnightcore\b/i,
+  /\b8d\b/i,
+] as const
+
 const innertubePost = async <T>(endpoint: string, body: object): Promise<T> => {
   if (window.windsound?.innertubeRequest) {
     return window.windsound.innertubeRequest(endpoint, body as Record<string, unknown>) as Promise<T>
   }
 
-  if (window.windsound) {
-    throw new Error('IPC do InnerTube indisponivel no preload. Reinicie o WindSound em modo desktop.')
+  throw new Error('InnerTube disponivel apenas pelo backend do WindSound. Abra o app desktop para continuar.')
+}
+
+const fetchPlayerResponse = async (videoId: string) => {
+  const cachedResponse = playerResponseCache.get(videoId)
+
+  if (cachedResponse) {
+    return cachedResponse
   }
 
-  const response = await fetch(`${INNERTUBE_BASE}/${endpoint}?key=${INNERTUBE_KEY}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Format-Version': '1',
-      Origin: 'https://music.youtube.com',
-      Referer: 'https://music.youtube.com/',
-    },
-    body: JSON.stringify({
-      context: CLIENT_CONTEXT,
-      ...body,
-    }),
+  let response = await innertubePost<any>('player', {
+    videoId,
+    __client: ANDROID_CLIENT,
   })
 
-  if (!response.ok) {
-    throw new Error(`InnerTube respondeu com status ${response.status}`)
+  if (response.playabilityStatus?.status !== 'OK') {
+    response = await innertubePost<any>('player', {
+      videoId,
+      __client: IOS_CLIENT,
+    })
   }
 
-  return response.json() as Promise<T>
+  playerResponseCache.set(videoId, response)
+  return response
+}
+
+const detectVideoClipAvailability = (response: any) => {
+  const details = response?.videoDetails ?? {}
+  const playerMicroformat =
+    response?.microformat?.playerMicroformatRenderer ?? response?.microformat?.microformatDataRenderer ?? {}
+  const title = String(details.title ?? playerMicroformat.title ?? '')
+  const author = String(details.author ?? playerMicroformat.ownerChannelName ?? '')
+  const description =
+    playerMicroformat.description?.simpleText ??
+    getRunsText(playerMicroformat.description?.runs) ??
+    ''
+  const keywords = Array.isArray(details.keywords) ? details.keywords.join(' ') : ''
+  const normalizedBlob = normalizeText([title, author, description, keywords].join(' '))
+  const ownerLooksOfficial = /\bvevo\b/i.test(author)
+  const hasPositiveSignal = CLIP_POSITIVE_PATTERNS.some((pattern) => pattern.test(normalizedBlob)) || ownerLooksOfficial
+  const hasNegativeSignal = CLIP_NEGATIVE_PATTERNS.some((pattern) => pattern.test(normalizedBlob))
+
+  return hasPositiveSignal && !hasNegativeSignal
+}
+
+const buildClipSearchQueries = (track: Pick<Track, 'title' | 'channelTitle' | 'album'>) =>
+  uniqueBy(
+    [
+      `${track.title} ${track.channelTitle} official music video`,
+      `${track.title} ${track.channelTitle} official video`,
+      `${track.title} ${track.channelTitle} videoclipe oficial`,
+      `${track.title} ${track.channelTitle}`,
+      track.album ? `${track.title} ${track.album} ${track.channelTitle}` : '',
+    ].filter(Boolean),
+    (query) => normalizeText(query),
+  )
+
+const scoreClipCandidate = (
+  candidate: SearchResult,
+  track: Pick<Track, 'title' | 'channelTitle' | 'album'>,
+) => {
+  const candidateTitle = normalizeText(candidate.title)
+  const candidateChannel = normalizeText(candidate.channelTitle)
+  const trackTitle = normalizeText(track.title)
+  const trackChannel = normalizeText(track.channelTitle)
+  const trackAlbum = normalizeText(track.album ?? '')
+
+  let score = 0
+
+  if (candidateTitle.includes(trackTitle) || trackTitle.includes(candidateTitle)) {
+    score += 6
+  }
+
+  if (candidateChannel.includes(trackChannel) || trackChannel.includes(candidateChannel)) {
+    score += 5
+  }
+
+  if (trackAlbum && candidateTitle.includes(trackAlbum)) {
+    score += 1
+  }
+
+  if (CLIP_POSITIVE_PATTERNS.some((pattern) => pattern.test(candidate.title))) {
+    score += 6
+  }
+
+  if (/\bvevo\b/i.test(candidate.channelTitle)) {
+    score += 3
+  }
+
+  if (CLIP_NEGATIVE_PATTERNS.some((pattern) => pattern.test(candidate.title))) {
+    score -= 8
+  }
+
+  return score
 }
 
 const mapSearchItem = (item: any): SearchResult | null => {
@@ -297,6 +426,7 @@ const mapSearchItem = (item: any): SearchResult | null => {
     videoId,
     title,
     channelTitle,
+    mediaType: /^vÃ­deo\b|^video\b/i.test(metaText) ? 'video' : 'audio',
     album,
     thumbnail: pickThumbnail(renderer?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails, videoId, title),
     duration: parseDurationText(durationLabel),
@@ -463,6 +593,7 @@ export const searchVideos = async (query: string): Promise<SearchResult[]> => {
 const mapSearchCardShelfPlaylist = (section: any): SearchPlaylistResult | null => {
   const renderer = section?.musicCardShelfRenderer
   const titleRun = renderer?.title?.runs?.[0]
+  const subtitleText = getRunsText(renderer?.subtitle?.runs)
   const browseId = titleRun?.navigationEndpoint?.browseEndpoint?.browseId
   const pageType =
     titleRun?.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType
@@ -474,6 +605,10 @@ const mapSearchCardShelfPlaylist = (section: any): SearchPlaylistResult | null =
     return null
   }
 
+  if (/^vídeo\b|^video\b/i.test(subtitleText)) {
+    return null
+  }
+
   if (pageType && !String(pageType).includes('PLAYLIST')) {
     return null
   }
@@ -481,10 +616,46 @@ const mapSearchCardShelfPlaylist = (section: any): SearchPlaylistResult | null =
   return {
     id: browseId ?? playlistId ?? titleRun.text,
     title: titleRun.text,
-    channelTitle: getRunsText(renderer?.subtitle?.runs).replace(/^Playlist\s*•\s*/i, '') || 'YouTube Music',
+    channelTitle: subtitleText.replace(/^Playlist\s*•\s*/i, '') || 'YouTube Music',
     thumbnail: pickThumbnail(renderer?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails, undefined, titleRun.text),
     browseId: browseId ?? `VL${playlistId}`,
     itemType: 'playlist',
+  }
+}
+
+const mapSearchCardShelfVideo = (section: any): SearchResult | null => {
+  const renderer = section?.musicCardShelfRenderer
+  const titleRun = renderer?.title?.runs?.[0]
+  const subtitleText = getRunsText(renderer?.subtitle?.runs)
+  const metaParts = subtitleText
+    .split(/[â€¢Â·•]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const videoId =
+    titleRun?.navigationEndpoint?.watchEndpoint?.videoId ??
+    renderer?.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId ??
+    renderer?.buttons?.[0]?.buttonRenderer?.command?.watchEndpoint?.videoId
+
+  if (!renderer || !titleRun?.text || !videoId) {
+    return null
+  }
+
+  if (!/^vídeo\b|^video\b/i.test(subtitleText)) {
+    return null
+  }
+
+  const durationLabel = metaParts.find((part) => /^\d{1,2}:\d{2}(?::\d{2})?$/.test(part)) ?? '--:--'
+  const channelTitle = metaParts.find((part) => !/^vídeo\b|^video\b/i.test(part)) ?? 'YouTube Music'
+
+  return {
+    id: videoId,
+    videoId,
+    title: titleRun.text,
+    channelTitle,
+    mediaType: 'video',
+    thumbnail: pickThumbnail(renderer?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails, videoId, titleRun.text),
+    duration: parseDurationText(durationLabel),
+    durationLabel,
   }
 }
 
@@ -513,18 +684,28 @@ export const searchCatalog = async (query: string): Promise<SearchCatalogResult[
     .map(mapSearchItem)
     .filter((item: SearchResult | null): item is SearchResult => Boolean(item))
 
-  const playlists = generalSections
-    .flatMap((section: any) => {
-      const cardPlaylist = mapSearchCardShelfPlaylist(section)
-      const shelfPlaylists = (section?.musicShelfRenderer?.contents ?? [])
-        .map(mapSearchPlaylistItem)
-        .filter((item: SearchPlaylistResult | null): item is SearchPlaylistResult => Boolean(item))
+  const generalItems = generalSections.flatMap((section: any) => {
+    const cardVideo = mapSearchCardShelfVideo(section)
+    const cardPlaylist = mapSearchCardShelfPlaylist(section)
+    const shelfPlaylists = (section?.musicShelfRenderer?.contents ?? [])
+      .map(mapSearchPlaylistItem)
+      .filter((item: SearchPlaylistResult | null): item is SearchPlaylistResult => Boolean(item))
 
-      return cardPlaylist ? [cardPlaylist, ...shelfPlaylists] : shelfPlaylists
-    })
+    return [
+      ...(cardVideo ? [cardVideo] : []),
+      ...(cardPlaylist ? [cardPlaylist] : []),
+      ...shelfPlaylists,
+    ]
+  })
 
-  const uniqueSongs: SearchResult[] = uniqueBy(songs, (item) => item.videoId)
-  const uniquePlaylists: SearchPlaylistResult[] = uniqueBy(playlists, (item) => item.browseId)
+  const uniqueSongs: SearchResult[] = uniqueBy(
+    [...songs, ...generalItems.filter((item: SearchCatalogResult): item is SearchResult => 'videoId' in item)],
+    (item) => item.videoId,
+  )
+  const uniquePlaylists: SearchPlaylistResult[] = uniqueBy(
+    generalItems.filter((item: SearchCatalogResult): item is SearchPlaylistResult => 'browseId' in item),
+    (item) => item.browseId,
+  )
   const prioritized: SearchCatalogResult[] = []
   const maxLength = Math.max(uniqueSongs.length, uniquePlaylists.length)
 
@@ -542,17 +723,7 @@ export const searchCatalog = async (query: string): Promise<SearchCatalogResult[
 }
 
 export const getVideoDetails = async (videoId: string): Promise<VideoDetails> => {
-  let response = await innertubePost<any>('player', {
-    videoId,
-    __client: ANDROID_CLIENT,
-  })
-
-  if (response.playabilityStatus?.status !== 'OK') {
-    response = await innertubePost<any>('player', {
-      videoId,
-      __client: IOS_CLIENT,
-    })
-  }
+  const response = await fetchPlayerResponse(videoId)
 
   const videoDetails = response.videoDetails ?? {}
   const adaptiveFormats = response.streamingData?.adaptiveFormats ?? []
@@ -570,6 +741,14 @@ export const getVideoDetails = async (videoId: string): Promise<VideoDetails> =>
 
   const duration = Number(videoDetails.lengthSeconds ?? 0)
 
+  if (window.windsound?.primePlayback) {
+    try {
+      await window.windsound.primePlayback(videoId, audioFormat.url)
+    } catch (error) {
+      console.warn('WindSound playback prime failed:', error)
+    }
+  }
+
   return {
     videoId,
     title: videoDetails.title ?? 'Faixa sem titulo',
@@ -577,13 +756,115 @@ export const getVideoDetails = async (videoId: string): Promise<VideoDetails> =>
     thumbnail: pickThumbnail(videoDetails.thumbnail?.thumbnails, videoId, videoDetails.title ?? 'Faixa'),
     duration,
     durationLabel: formatDuration(duration),
+    hasVideoClip: detectVideoClipAvailability(response),
     streamUrl: window.windsound?.createPlaybackUrl
       ? window.windsound.createPlaybackUrl(videoId)
       : window.windsound?.createStreamUrl
         ? window.windsound.createStreamUrl(audioFormat.url)
         : audioFormat.url,
+    fallbackStreamUrl: window.windsound?.createStreamUrl ? window.windsound.createStreamUrl(audioFormat.url) : audioFormat.url,
+    rawStreamUrl: audioFormat.url,
   }
 }
+
+export const getTrackVideoAvailability = async (videoId: string) => {
+  try {
+    const response = await fetchPlayerResponse(videoId)
+
+    return {
+      hasVideoClip: detectVideoClipAvailability(response),
+    }
+  } catch (error) {
+    console.error('WindSound video availability error:', error)
+    return {
+      hasVideoClip: false,
+    }
+  }
+}
+
+export const resolveTrackVideoClip = async (track: Pick<Track, 'videoId' | 'title' | 'channelTitle' | 'album'>) => {
+  const currentTrackAvailability = await getTrackVideoAvailability(track.videoId)
+
+  if (currentTrackAvailability.hasVideoClip) {
+    return {
+      hasVideoClip: true,
+      clipVideoId: track.videoId,
+    }
+  }
+
+  const queries = buildClipSearchQueries(track)
+  const candidates: SearchResult[] = []
+
+  for (const query of queries) {
+    const response = await innertubePost<any>('search', { query })
+    const sections =
+      response.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents ?? []
+
+    for (const section of sections) {
+      const shelfItems = section?.musicShelfRenderer?.contents ?? []
+
+      for (const item of shelfItems) {
+        const mapped = mapSearchItem(item)
+
+        if (mapped) {
+          candidates.push(mapped)
+        }
+      }
+    }
+
+    const uniqueCandidates = uniqueBy(candidates, (item) => item.videoId)
+      .map((candidate) => ({
+        candidate,
+        score: scoreClipCandidate(candidate, track),
+      }))
+      .sort((left, right) => right.score - left.score)
+
+    const bestMatch = uniqueCandidates[0]
+
+    if (bestMatch && bestMatch.score >= 9) {
+      return {
+        hasVideoClip: true,
+        clipVideoId: bestMatch.candidate.videoId,
+      }
+    }
+  }
+
+  return {
+    hasVideoClip: false,
+    clipVideoId: null,
+  }
+}
+
+const mapResponsiveHomeItem = (item: any): HomeSection['items'][number] | null => {
+  const renderer = item?.musicResponsiveListItemRenderer
+  const flexColumns = renderer?.flexColumns ?? []
+  const titleRuns = flexColumns[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs
+  const subtitleRuns = flexColumns[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs
+  const watchEndpoint =
+    renderer?.playlistItemData?.videoId ??
+    renderer?.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId ??
+    renderer?.navigationEndpoint?.watchEndpoint?.videoId
+  const browseEndpoint = renderer?.navigationEndpoint?.browseEndpoint?.browseId
+  const title = getRunsText(titleRuns)
+
+  if (!title || (!watchEndpoint && !browseEndpoint)) {
+    return null
+  }
+
+  return {
+    id: watchEndpoint ?? browseEndpoint,
+    title,
+    subtitle: getRunsText(subtitleRuns) || 'YouTube Music',
+    thumbnail: pickThumbnail(renderer?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails, watchEndpoint, title),
+    videoId: watchEndpoint,
+    browseId: browseEndpoint,
+  }
+}
+
+const mapShelfContentsToItems = (contents: any[]) =>
+  contents
+    .map((item) => mapHomeItem(item) ?? mapResponsiveHomeItem(item))
+    .filter((item: HomeSection['items'][number] | null): item is HomeSection['items'][number] => Boolean(item))
 
 export const getPlaylistTracks = async (browseId: string): Promise<SearchResult[]> => {
   const response = await innertubePost<any>('browse', {
@@ -601,30 +882,155 @@ export const getPlaylistTracks = async (browseId: string): Promise<SearchResult[
   return uniqueBy([...responsiveItems, ...panelItems], (item) => item.videoId)
 }
 
+export const normalizePlaylistBrowseId = (value: string) => {
+  const input = value.trim()
+
+  if (!input) {
+    return ''
+  }
+
+  if (/^(VL|MPREb_)/i.test(input)) {
+    return input
+  }
+
+  try {
+    const parsed = new URL(input)
+    const listId = parsed.searchParams.get('list')
+
+    if (listId) {
+      return listId.startsWith('VL') ? listId : `VL${listId}`
+    }
+  } catch {
+    return input.startsWith('VL') ? input : `VL${input}`
+  }
+
+  return input.startsWith('VL') ? input : `VL${input}`
+}
+
+export const getYouTubePlaylist = async (browseIdOrUrl: string): Promise<YouTubePlaylist> => {
+  const browseId = normalizePlaylistBrowseId(browseIdOrUrl)
+
+  if (!browseId) {
+    throw new Error('Informe um link ou browseId de playlist do YouTube Music.')
+  }
+
+  const response = await innertubePost<any>('browse', {
+    browseId,
+  })
+
+  const tracks = await getPlaylistTracks(browseId)
+  const header =
+    response.header?.musicDetailHeaderRenderer ??
+    response.header?.musicEditablePlaylistDetailHeaderRenderer ??
+    response.header?.musicResponsiveHeaderRenderer
+
+  const title =
+    header?.title?.runs?.[0]?.text ??
+    header?.title?.simpleText ??
+    response.microformat?.microformatDataRenderer?.title ??
+    'Playlist do YouTube'
+
+  const channelTitle =
+    getRunsText(header?.subtitle?.runs) ||
+    getRunsText(header?.straplineTextOne?.runs) ||
+    response.microformat?.microformatDataRenderer?.ownerChannelName ||
+    'YouTube Music'
+
+  const thumbnail =
+    pickThumbnail(
+      header?.thumbnail?.croppedSquareThumbnailRenderer?.thumbnail?.thumbnails ??
+        header?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails ??
+        header?.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails,
+      tracks[0]?.videoId,
+      title,
+    ) || createThumbnailFallback(title)
+
+  return {
+    id: browseId,
+    browseId,
+    title,
+    channelTitle,
+    thumbnail,
+    tracks,
+    syncedAt: Date.now(),
+  }
+}
+
+export const getReadyMadePlaylists = async () => {
+  const feed = await getHomeFeed()
+
+  return uniqueBy(
+    feed.playlistSections.flatMap((section) =>
+      section.items
+        .filter((item) => item.browseId)
+        .map((item) => ({
+          id: item.browseId ?? item.id,
+          browseId: item.browseId ?? item.id,
+          title: item.title,
+          channelTitle: item.subtitle || 'YouTube Music',
+          thumbnail: item.thumbnail || createThumbnailFallback(item.title),
+          itemType: 'playlist' as const,
+        })),
+    ),
+    (item) => item.browseId,
+  ).slice(0, 18)
+}
+
+export const getAccountPlaylists = async () => {
+  const response = await innertubePost<any>('browse', {
+    browseId: 'FEmusic_library_landing',
+  })
+
+  const twoRowPlaylists = collectRenderers(response, 'musicTwoRowItemRenderer')
+    .map((renderer) => mapHomeItem({ musicTwoRowItemRenderer: renderer }))
+    .flatMap((item) => {
+      if (!item?.browseId || item.videoId) {
+        return []
+      }
+
+      return [
+        {
+          id: item.browseId,
+          browseId: item.browseId,
+          title: item.title,
+          channelTitle: item.subtitle || 'YouTube Music',
+          thumbnail: item.thumbnail || createThumbnailFallback(item.title),
+          itemType: 'playlist' as const,
+        },
+      ]
+    })
+
+  const responsivePlaylists = collectRenderers(response, 'musicResponsiveListItemRenderer')
+    .map((renderer) => mapSearchPlaylistItem({ musicResponsiveListItemRenderer: renderer }))
+    .filter((item: SearchPlaylistResult | null): item is SearchPlaylistResult => Boolean(item))
+
+  return uniqueBy(
+    [
+      ...twoRowPlaylists,
+      ...responsivePlaylists,
+    ],
+    (item) => item.browseId,
+  ).slice(0, 24)
+}
+
 export const getHomeSections = async (): Promise<HomeSection[]> => {
   const response = await innertubePost<any>('browse', {
     browseId: 'FEmusic_home',
   })
 
-  const sections =
-    response.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents ?? []
+  const carouselShelves = collectRenderers(response, 'musicCarouselShelfRenderer')
+  const immersiveShelves = collectRenderers(response, 'musicImmersiveCarouselShelfRenderer')
+  const shelves = [...carouselShelves, ...immersiveShelves]
 
-  return sections
-    .map((section: any, index: number) => {
-      const shelf = section.musicCarouselShelfRenderer ?? section.musicImmersiveCarouselShelfRenderer
-
-      if (!shelf) {
-        return null
-      }
-
+  return shelves
+    .map((shelf: any, index: number) => {
       const title =
         shelf.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.[0]?.text ??
         shelf.header?.musicImmersiveCarouselShelfBasicHeaderRenderer?.title?.runs?.[0]?.text ??
+        shelf.header?.musicSideAlignedItemRenderer?.startItems?.[0]?.musicSortFilterButtonRenderer?.title?.runs?.[0]?.text ??
         `Sessao ${index + 1}`
 
-      const items = (shelf.contents ?? [])
-        .map(mapHomeItem)
-        .filter((item: HomeSection['items'][number] | null): item is HomeSection['items'][number] => Boolean(item))
+      const items = mapShelfContentsToItems(shelf.contents ?? [])
 
       if (items.length === 0) {
         return null
@@ -633,7 +1039,7 @@ export const getHomeSections = async (): Promise<HomeSection[]> => {
       return {
         id: `${title}-${index}`,
         title,
-        items,
+        items: uniqueBy(items, (item) => item.videoId ?? item.browseId ?? item.id),
       }
     })
     .filter((section: HomeSection | null): section is HomeSection => Boolean(section))
@@ -831,7 +1237,22 @@ export const connectYouTubeAccount = async (): Promise<AccountStatus> => {
     throw new Error('Conexao de conta disponivel apenas na janela desktop do WindSound.')
   }
 
-  return window.windsound.connectAccount()
+  const initialStatus = await window.windsound.connectAccount()
+
+  if (initialStatus.connected) {
+    return initialStatus
+  }
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1000))
+    const nextStatus = await getAccountStatus()
+
+    if (nextStatus.connected) {
+      return nextStatus
+    }
+  }
+
+  return initialStatus
 }
 
 export const disconnectYouTubeAccount = async (): Promise<AccountStatus> => {
@@ -883,6 +1304,8 @@ export const getHomeFeed = async (): Promise<HomeFeed> => {
     songSections: preparedSections.songSections,
   }
 }
+
+export const getHomeRefreshInterval = () => HOME_REFRESH_INTERVAL_MS
 
 export const getMockRecommendations = async (): Promise<RecommendationItem[]> => {
   // TODO: integrar com GET /recommendations?userId={id} para ranking de gosto + historico proprio.
