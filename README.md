@@ -34,6 +34,11 @@ O projeto nasceu com a ideia de criar uma interface musical limpa e intuitiva, a
 
 ---
 
+<div align="center">
+  <img src="assets/Screenshot_1.png" width="45%" />
+  <img src="assets/Screenshot_2.png" width="45%" />
+</div>
+
 ## ✨ Funcionalidades atuais
 
 - 🔐 **Login com YouTube Music** — autenticação pela conta do usuário no app desktop
