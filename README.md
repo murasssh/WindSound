@@ -46,7 +46,9 @@ O projeto nasceu com a ideia de criar uma interface musical limpa e intuitiva, a
 - 🔍 **Busca integrada** — músicas e playlists
 - 📋 **Fila de reprodução** — controle da próxima sequência
 - 🧠 **Rádio automática** — continua músicas parecidas quando necessário
-- 🎨 **Tema customizável** — interface escura com identidade própria
+- 🎨 **Temas** — interface com identidade própria
+- 🗂 **Playlists** — Sistema de Pasta que sincroniza com youtube music
+- 📼 **Vídeos** - Reproduz Vídeoclips também 
 
 > 🚧 Mais funcionalidades estão sendo desenvolvidas.
 
