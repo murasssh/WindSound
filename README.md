@@ -13,9 +13,9 @@
 
 **Um player de música moderno, alimentado pelo YouTube Music.**
 
-[![Status](https://img.shields.io/badge/versão-3.4.0-blue?style=flat-square)
-[![Versão](https://img.shields.io/badge/versão-0.1.0--beta-blue?style=flat-square)](https://github.com)
-[![API](https://img.shields.io/badge/API-Innertube-red?style=flat-square)](https://github.com)
+[![Status](https://img.shields.io/badge/status-beta-orange?style=flat-square)](https://en-wikipedia-org.translate.goog/wiki/Software_release_life_cycle?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=pt&_x_tr_pto=tc)
+[![Versão](https://img.shields.io/badge/versão-3.4.0-blue?style=flat-square)](https://github.com/murasssh/WindSound/releases/tag/zip)
+[![API](https://img.shields.io/badge/API-Innertube-red?style=flat-square)](https://github.com/z-huang/InnerTune)
 [![Licença](https://img.shields.io/badge/licença-GPLv3-green?style=flat-square)](LICENSE)
 
 </div>
