@@ -1,0 +1,2 @@
+Update test marker for the WindSound updater flow.
+Created only to validate GitHub commit detection.
