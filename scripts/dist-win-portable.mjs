@@ -84,6 +84,7 @@ const stopPreviousBuildProcesses = () => {
 
 stopPreviousBuildProcesses()
 run('npm run icons:win')
+run('npm --prefix windsound-installer run build')
 run('npm run build:web')
 run('npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false', {
   env: process.env,

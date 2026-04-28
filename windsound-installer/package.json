@@ -1,0 +1,40 @@
+{
+  "name": "windsound-installer",
+  "version": "1.0.0",
+  "description": "WindSound Installer — baixa e instala o WindSound automaticamente",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "npx electron-builder --win portable --x64 --publish never --config.win.signAndEditExecutable=false",
+    "build": "node scripts/build-installer.mjs"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.windsound.installer",
+    "productName": "WindSound Installer",
+    "asar": true,
+    "directories": {
+      "output": "dist-installer"
+    },
+    "extraResources": [
+      {
+        "from": "resources/node",
+        "to": "node",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "WindSound_Installer_${version}.exe"
+    }
+  }
+}

@@ -9,11 +9,15 @@
     "dev": "vite",
     "dev:web": "vite --mode web",
     "icons:win": "node scripts/generate-icons.mjs \"C:\\\\Users\\\\muras\\\\Downloads\\\\Your paragraph text.svg\"",
+    "prebuild": "node scripts/sync-build-meta.mjs",
+    "prebuild:web": "node scripts/sync-build-meta.mjs",
     "build": "tsc -p tsconfig.json && vite build",
     "build:web": "tsc -p tsconfig.json && vite build",
     "clean": "node -e \"const fs=require('fs');['dist','dist-electron'].forEach((dir)=>fs.rmSync(dir,{recursive:true,force:true}))\"",
     "preview": "vite preview",
     "electron:build": "electron-builder",
+    "predist": "node scripts/sync-build-meta.mjs",
+    "predist:win": "node scripts/sync-build-meta.mjs",
     "dist": "node scripts/dist-win-portable.mjs",
     "dist:win": "node scripts/dist-win-portable.mjs"
   },
@@ -64,6 +68,15 @@
     "directories": {
       "output": "dist"
     },
+    "extraResources": [
+      {
+        "from": "windsound-installer/dist-installer",
+        "to": "installer",
+        "filter": [
+          "*.exe"
+        ]
+      }
+    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",

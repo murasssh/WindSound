@@ -9,6 +9,17 @@ interface ImportMeta {
 }
 
 declare global {
+  interface WindSoundUpdateStatus {
+    available: boolean
+    installerReady: boolean
+    currentVersion: string
+    currentCommitSha: string
+    latestCommitSha: string | null
+    latestCommitMessage: string | null
+    latestPublishedAt: string | null
+    latestReleaseName: string | null
+  }
+
   interface Window {
     onYouTubeIframeAPIReady?: () => void
     YT?: typeof YT
@@ -32,6 +43,8 @@ declare global {
         }>
       >
       primePlayback: (videoId: string, fallbackUrl: string) => Promise<boolean>
+      getUpdateStatus: () => Promise<WindSoundUpdateStatus>
+      launchUpdateInstaller: () => Promise<{ ok: boolean }>
       createStreamUrl: (streamUrl: string) => string
       createPlaybackUrl: (videoId: string) => string
       getAuthStatus: () => Promise<{

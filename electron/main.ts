@@ -7,6 +7,7 @@ import { clearYouTubeAccountSession, getYouTubeAccountStatus } from './authentic
 import { MUSIC_ORIGIN } from './config/constants'
 import { ensureStreamServer, primePlaybackFallback } from './stream/proxy'
 import { ensureRendererServer } from './system/rendererServer'
+import { getUpdateStatus, launchInstallerUpdate } from './system/updater'
 import { innertubeRequest } from './youtube-services/innertube'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -14,6 +15,25 @@ const __dirname = dirname(__filename)
 const legacyUserDataPath = path.join(app.getPath('appData'), 'beanplayer')
 const windsoundUserDataPath = path.join(app.getPath('appData'), 'windsound')
 const userDataPath = fs.existsSync(legacyUserDataPath) ? legacyUserDataPath : windsoundUserDataPath
+
+// Garante que todos os diretórios de dados do app existam antes de iniciar
+const ensureAppDirectories = () => {
+  const dirs = [
+    userDataPath,
+    path.join(userDataPath, 'cache'),
+    path.join(userDataPath, 'stream-cache'),
+    path.join(userDataPath, 'session'),
+    path.join(userDataPath, 'logs'),
+  ]
+
+  for (const dir of dirs) {
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+    } catch (error) {
+      console.warn(`[WindSound] Nao foi possivel criar diretorio: ${dir}`, error)
+    }
+  }
+}
 const iconPath = app.isPackaged
   ? path.join(__dirname, '../dist/branding/windsound-icon.png')
   : path.join(process.cwd(), 'public', 'branding', 'windsound-icon.png')
@@ -173,6 +193,7 @@ const createWindow = async () => {
 
 app.whenReady().then(async () => {
   app.setName('WindSound')
+  ensureAppDirectories()
   ensureStreamServer(app)
 
   ipcMain.handle('windsound:ping', async () => {
@@ -205,6 +226,14 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('windsound:prime-playback', async (_event, videoId: string, fallbackUrl: string) => {
     return primePlaybackFallback(videoId, fallbackUrl)
+  })
+
+  ipcMain.handle('windsound:get-update-status', async () => {
+    return getUpdateStatus()
+  })
+
+  ipcMain.handle('windsound:launch-update-installer', async () => {
+    return launchInstallerUpdate()
   })
 
   await createWindow()

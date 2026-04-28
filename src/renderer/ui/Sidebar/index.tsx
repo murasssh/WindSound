@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ChevronRight, Cog, Home, Library, Search } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, Cog, Home, Library, Search, Sparkles } from 'lucide-react'
 import { connectYouTubeAccount, disconnectYouTubeAccount, getAccountStatus } from '@/integrations/youtube'
 import { usePlayerStore } from '@/state/playerStore'
 import type { AppView } from '@/types'
@@ -23,6 +23,8 @@ const makeTrackFallback = (label: string) =>
 const Sidebar = () => {
   const [isConnecting, setIsConnecting] = useState(false)
   const [showDisconnectHint, setShowDisconnectHint] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<WindSoundUpdateStatus | null>(null)
+  const [isLaunchingUpdate, setIsLaunchingUpdate] = useState(false)
   const { currentView, setCurrentView, accountStatus, setAccountStatus, queue, currentIndex, playFromQueue } =
     usePlayerStore((state) => ({
       currentView: state.currentView,
@@ -50,6 +52,38 @@ const Sidebar = () => {
     }
   }, [setAccountStatus])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const syncUpdateStatus = async () => {
+      if (!window.windsound?.getUpdateStatus) {
+        return
+      }
+
+      try {
+        const status = await window.windsound.getUpdateStatus()
+
+        if (!cancelled) {
+          setUpdateStatus(status)
+        }
+      } catch {
+        if (!cancelled) {
+          setUpdateStatus(null)
+        }
+      }
+    }
+
+    void syncUpdateStatus()
+    const timer = window.setInterval(() => {
+      void syncUpdateStatus()
+    }, 5 * 60 * 1000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
   const handleConnect = async () => {
     setIsConnecting(true)
 
@@ -70,6 +104,20 @@ const Sidebar = () => {
       setAccountStatus(status)
     } finally {
       setIsConnecting(false)
+    }
+  }
+
+  const handleLaunchUpdate = async () => {
+    if (!window.windsound?.launchUpdateInstaller || isLaunchingUpdate) {
+      return
+    }
+
+    setIsLaunchingUpdate(true)
+
+    try {
+      await window.windsound.launchUpdateInstaller()
+    } catch {
+      setIsLaunchingUpdate(false)
     }
   }
 
@@ -174,6 +222,39 @@ const Sidebar = () => {
       </section>
 
       <div className="px-1 pt-5">
+        {updateStatus?.available ? (
+          <button
+            type="button"
+            onClick={() => void handleLaunchUpdate()}
+            disabled={isLaunchingUpdate}
+            className="group relative mb-3 w-full overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--color-accent)_26%,white_10%)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--color-accent)_22%,transparent),color-mix(in_srgb,var(--color-surface2)_82%,transparent))] px-4 py-4 text-left shadow-[0_18px_42px_color-mix(in_srgb,var(--color-accent)_16%,transparent)] transition duration-200 hover:-translate-y-[1px] hover:border-[color:color-mix(in_srgb,var(--color-accent)_40%,white_14%)]"
+          >
+            <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--color-accent)_72%,white_28%),transparent)] opacity-80" />
+            <span className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-[color:color-mix(in_srgb,var(--color-accent)_18%,transparent)] blur-2xl transition duration-300 group-hover:scale-110" />
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border border-[color:color-mix(in_srgb,var(--color-accent)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_14%,transparent)] text-[var(--color-text)]">
+                <Sparkles size={18} strokeWidth={2.1} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-[color:color-mix(in_srgb,var(--color-accent)_70%,white_30%)]">
+                  Update pronta
+                </p>
+                <p className="mt-1 text-[14px] font-semibold leading-5 text-[var(--color-text)]">
+                  {updateStatus.latestReleaseName || 'Nova versao do WindSound'}
+                </p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[color:color-mix(in_srgb,var(--color-text)_72%,var(--color-subtext)_28%)]">
+                  {isLaunchingUpdate
+                    ? 'Abrindo o updater otimizado...'
+                    : updateStatus.latestCommitMessage || 'Uma atualizacao grande ja esta pronta para instalar.'}
+                </p>
+              </div>
+              <span className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[color:color-mix(in_srgb,var(--color-text)_6%,transparent)] text-[var(--color-text)] transition duration-200 group-hover:bg-[color:color-mix(in_srgb,var(--color-text)_10%,transparent)]">
+                <ArrowUpRight size={16} />
+              </span>
+            </div>
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={() => setCurrentView('settings')}
