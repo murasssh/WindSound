@@ -1,13 +1,14 @@
 import { spawn } from 'child_process'
 
 const YT_DLP_FAILURE_TTL_MS = 5 * 60 * 1000
+const YT_DLP_PROCESS_TIMEOUT_MS = 90_000
 
 type CommandCandidate = {
   command: string
   args: string[]
 }
 
-const COMMAND_CANDIDATES: CommandCandidate[] = [
+export const COMMAND_CANDIDATES: CommandCandidate[] = [
   {
     command: 'yt-dlp',
     args: [],
@@ -24,7 +25,7 @@ let lastFailure: Error | null = null
 const runCommand = (candidate: CommandCandidate, videoId: string) =>
   new Promise<string>((resolve, reject) => {
     const targetUrl = `https://www.youtube.com/watch?v=${videoId}`
-    const process = spawn(candidate.command, [
+    const proc = spawn(candidate.command, [
       ...candidate.args,
       '-f',
       'bestaudio[ext=m4a]/bestaudio',
@@ -35,20 +36,38 @@ const runCommand = (candidate: CommandCandidate, videoId: string) =>
 
     let stdout = ''
     let stderr = ''
+    let settled = false
 
-    process.stdout.on('data', (chunk) => {
+    // Timeout: mata o processo se demorar mais que YT_DLP_PROCESS_TIMEOUT_MS
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        try { proc.kill('SIGKILL') } catch {}
+        reject(new Error(`${candidate.command} excedeu o timeout de ${YT_DLP_PROCESS_TIMEOUT_MS / 1000}s`))
+      }
+    }, YT_DLP_PROCESS_TIMEOUT_MS)
+
+    proc.stdout.on('data', (chunk) => {
       stdout += chunk.toString()
     })
 
-    process.stderr.on('data', (chunk) => {
+    proc.stderr.on('data', (chunk) => {
       stderr += chunk.toString()
     })
 
-    process.on('error', (error) => {
-      reject(error)
+    proc.on('error', (error) => {
+      if (!settled) {
+        settled = true
+        clearTimeout(timeoutId)
+        reject(error)
+      }
     })
 
-    process.on('close', (code) => {
+    proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeoutId)
+
       if (code !== 0) {
         reject(new Error(stderr.trim() || `${candidate.command} retornou codigo ${code}`))
         return

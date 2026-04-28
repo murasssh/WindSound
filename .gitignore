@@ -41,3 +41,10 @@ session-backups/
 build/
 portable-build/
 portable-build-noicon/
+
+# generated update metadata
+public/build-meta.json
+
+# installer artifacts
+windsound-installer/dist-installer/
+windsound-installer/resources/

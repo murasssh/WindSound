@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import { innertubeRequest } from './innertube'
+import { COMMAND_CANDIDATES } from '../system/ytDlp'
 
 interface RadioSeedTrack {
   videoId: string
@@ -217,6 +218,8 @@ const fetchNativeRadioQueue = async (seed: RadioSeedTrack, limit: number): Promi
   return diversifyQueue(mapped, seed.channelTitle, limit)
 }
 
+const METADATA_TIMEOUT_MS = 90_000
+
 const resolveYtDlpMetadata = (videoId: string) =>
   new Promise<YtDlpMetadata>((resolve, reject) => {
     const cached = metadataCache.get(videoId)
@@ -227,36 +230,68 @@ const resolveYtDlpMetadata = (videoId: string) =>
     }
 
     const targetUrl = `https://www.youtube.com/watch?v=${videoId}`
-    const process = spawn('python', ['-m', 'yt_dlp', '--dump-single-json', '--no-playlist', '--no-warnings', targetUrl])
 
-    let stdout = ''
-    let stderr = ''
-
-    process.stdout.on('data', (chunk) => {
-      stdout += chunk.toString()
-    })
-
-    process.stderr.on('data', (chunk) => {
-      stderr += chunk.toString()
-    })
-
-    process.on('error', (error) => reject(error))
-
-    process.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || `yt-dlp retornou codigo ${code}`))
+    const tryCandidate = (index: number) => {
+      if (index >= COMMAND_CANDIDATES.length) {
+        reject(new Error('Nenhum candidato yt-dlp funcionou para metadata'))
         return
       }
 
-      try {
-        const parsed = JSON.parse(stdout) as YtDlpMetadata
-        metadataCache.set(videoId, parsed)
-        resolve(parsed)
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error('Nao foi possivel ler metadata do yt-dlp'))
-      }
-    })
+      const candidate = COMMAND_CANDIDATES[index]
+      const proc = spawn(candidate.command, [
+        ...candidate.args,
+        '--dump-single-json',
+        '--no-playlist',
+        '--no-warnings',
+        targetUrl,
+      ])
+
+      let stdout = ''
+      let stderr = ''
+      let settled = false
+
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          try { proc.kill('SIGKILL') } catch {}
+          tryCandidate(index + 1)
+        }
+      }, METADATA_TIMEOUT_MS)
+
+      proc.stdout.on('data', (chunk) => { stdout += chunk.toString() })
+      proc.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+
+      proc.on('error', () => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeoutId)
+          tryCandidate(index + 1)
+        }
+      })
+
+      proc.on('close', (code) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeoutId)
+
+        if (code !== 0) {
+          tryCandidate(index + 1)
+          return
+        }
+
+        try {
+          const parsed = JSON.parse(stdout) as YtDlpMetadata
+          metadataCache.set(videoId, parsed)
+          resolve(parsed)
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error('Nao foi possivel ler metadata do yt-dlp'))
+        }
+      })
+    }
+
+    tryCandidate(0)
   })
+
 
 const extractStyleTokens = (metadata: YtDlpMetadata) =>
   uniqueBy(

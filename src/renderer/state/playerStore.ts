@@ -293,7 +293,7 @@ export const usePlayerStore = create<PlayerStore>()(
             return { queue: nextQueue }
           })
         } catch (error) {
-      console.error('WindSound radio seed error:', error)
+          console.error('WindSound radio seed error:', error)
         }
       },
       startPlaylist: (tracks, startIndex = 0) =>
@@ -493,7 +493,7 @@ export const usePlayerStore = create<PlayerStore>()(
               return
             }
           } catch (error) {
-      console.error('WindSound radio queue refill error:', error)
+            console.error('WindSound radio queue refill error:', error)
           }
         }
 

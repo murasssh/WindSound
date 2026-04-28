@@ -40,14 +40,25 @@ const fetchUpstreamSlice = async (
   start: number,
   end: number,
   baseHeaders: Headers,
+  timeoutMs = 30_000,
 ): Promise<{ buffer: Buffer; contentType: string; totalSize: number; acceptRanges: string | null }> => {
   const headers = new Headers(baseHeaders)
   headers.set('Range', `bytes=${start}-${end}`)
 
-  const upstream = await fetch(streamUrl, {
-    method: 'GET',
-    headers,
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  let upstream: Response
+
+  try {
+    upstream = await fetch(streamUrl, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (upstream.status === 206) {
     const buffer = Buffer.from(await upstream.arrayBuffer())
@@ -120,8 +131,11 @@ const streamEntireUpstream = async (
   let start = 0
   let totalSize = hintedTotalSize || 0
   let wroteHeaders = false
+  const MAX_ITERATIONS = 4096
+  let iteration = 0
 
-  while (true) {
+  while (iteration < MAX_ITERATIONS) {
+    iteration += 1
     const end =
       totalSize > 0 ? Math.min(totalSize - 1, start + STREAM_CHUNK_SIZE - 1) : start + STREAM_CHUNK_SIZE - 1
     const chunk = await fetchUpstreamSlice(streamUrl, start, end, baseHeaders)
@@ -139,6 +153,11 @@ const streamEntireUpstream = async (
       wroteHeaders = true
     }
 
+    if (chunk.buffer.byteLength === 0) {
+      response.end()
+      return
+    }
+
     response.write(chunk.buffer)
     start += chunk.buffer.byteLength
 
@@ -146,11 +165,11 @@ const streamEntireUpstream = async (
       response.end()
       return
     }
+  }
 
-    if (chunk.buffer.byteLength === 0) {
-      response.end()
-      return
-    }
+  // Safety: encerra se atingir o limite de iteracoes
+  if (!response.writableEnded) {
+    response.end()
   }
 }
 

@@ -454,7 +454,7 @@ const mapSearchPlaylistItem = (item: any): SearchPlaylistResult | null => {
   const title = getRunsText(titleRuns)
   const metaText = getRunsText(metaRuns)
   const metaParts = metaText
-    .split(/[â€¢•Â·]/)
+    .split(/[•·•]/)
     .map((part) => part.trim())
     .filter(Boolean)
 
@@ -509,7 +509,7 @@ const mapPlaylistTrackItem = (item: any): SearchResult | null => {
   const title = getRunsText(titleRuns)
   const metaText = getRunsText(metaRuns)
   const metaParts = metaText
-    .split(/[â€¢Â·]/)
+    .split(/[•·•]/)
     .map((part) => part.trim())
     .filter(Boolean)
 
@@ -628,7 +628,7 @@ const mapSearchCardShelfVideo = (section: any): SearchResult | null => {
   const titleRun = renderer?.title?.runs?.[0]
   const subtitleText = getRunsText(renderer?.subtitle?.runs)
   const metaParts = subtitleText
-    .split(/[â€¢Â·•]/)
+    .split(/[•·•]/)
     .map((part) => part.trim())
     .filter(Boolean)
   const videoId =
