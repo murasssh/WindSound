@@ -90,7 +90,7 @@ Distribuído sob a licença GPLv3. Veja [`LICENSE`](LICENSE) para mais informaç
 
 <div align="center">
 
-Feito com 🎧 por **Murillo Bernardo**
+Feito com 🎧 por **Murillo Anquieta**
 
 *WindSound — Ao Som do Vento.*
 
